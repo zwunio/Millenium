@@ -197,12 +197,10 @@ Frame.BackgroundColor3 = rgb(255, 255, 255)
 Frame.Parent = frame
 Frame.BackgroundTransparency = 1
 Frame.Text = ""
-
 local resizing = false
 local start_size
 local start
 local og_size = frame.Size
-
 Frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 resizing = true
@@ -210,19 +208,16 @@ start = input.Position
 start_size = frame.Size
 end
 end)
-
 Frame.InputEnded:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 resizing = false
 end
 end)
-
 library:connection(uis.InputChanged, function(input, game_event)
 if resizing then
 local viewport_x = camera.ViewportSize.X
 local viewport_y = camera.ViewportSize.Y
 local mousePos = uis:GetMouseLocation()
-
 local current_size = dim2(
 start_size.X.Scale,
 math.clamp(
@@ -237,7 +232,6 @@ og_size.Y.Offset,
 viewport_y
 )
 )
-
 library:tween(frame, {Size = current_size}, Enum.EasingStyle.Linear, 0.05)
 end
 end)
@@ -264,7 +258,6 @@ function library:draggify(frame)
 local dragging = false
 local start_size = frame.Position
 local start
-
 frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging = true
@@ -272,19 +265,16 @@ start = input.Position
 start_size = frame.Position
 end
 end)
-
 frame.InputEnded:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging = false
 end
 end)
-
 library:connection(uis.InputChanged, function(input, game_event)
 if dragging then
 local viewport_x = camera.ViewportSize.X
 local viewport_y = camera.ViewportSize.Y
 local mousePos = uis:GetMouseLocation()
-
 local current_position = dim2(
 0,
 clamp(
@@ -299,7 +289,6 @@ start_size.Y.Offset + (mousePos.Y - start.Y),
 viewport_y - frame.Size.Y.Offset
 )
 )
-
 library:tween(frame, {Position = current_position}, Enum.EasingStyle.Linear, 0.05)
 library:close_element()
 end
@@ -431,6 +420,7 @@ suffix = properties.suffix or properties.Suffix or "tech";
 name = properties.name or properties.Name or "nebula";
 game_name = properties.gameInfo or properties.game_info or properties.GameInfo or "Milenium for Counter-Strike: Global Offensive";
 size = properties.size or properties.Size or dim2(0, 700, 0, 565);
+scale = properties.scale or properties.Scale or 1; -- Add scale parameter
 selected_tab;
 items = {};
 tween;
@@ -449,6 +439,13 @@ Enabled = false;
 ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
 IgnoreGuiInset = true;
 });
+-- Apply UIScale to both ScreenGuis so ALL elements inherit it
+local uiScaleMain = Instance.new("UIScale")
+uiScaleMain.Scale = cfg.scale
+uiScaleMain.Parent = library[ "items" ]
+local uiScaleOther = Instance.new("UIScale")
+uiScaleOther.Scale = cfg.scale
+uiScaleOther.Parent = library[ "other" ]
 local items = cfg.items; do
 items[ "main" ] = library:create( "Frame" , {
 Parent = library[ "items" ];
@@ -1602,7 +1599,6 @@ items[ "slider" ].MouseButton1Down:Connect(function()
 cfg.dragging = true
 library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingStyle.Quad, 0.2)
 end)
-
 library:connection(uis.InputChanged, function(input)
 if cfg.dragging then
 local mousePos = uis:GetMouseLocation()
@@ -1611,14 +1607,12 @@ local value = ((cfg.max - cfg.min) * size_x) + cfg.min
 cfg.set(value)
 end
 end)
-
 library:connection(uis.InputEnded, function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 cfg.dragging = false
 library:tween(items[ "value" ], {TextColor3 = rgb(72, 72, 73)}, Enum.EasingStyle.Quad, 0.2)
 end
 end)
-
 if cfg.seperator then
 library:create( "Frame" , {
 AnchorPoint = vec2(0, 1);
@@ -2347,41 +2341,34 @@ cfg.callback(Color, a)
 end
 function cfg.update_color()
 local mousePos = uis:GetMouseLocation()
-local offset = vec2(mousePos.X, mousePos.Y - gui_offset)
 if dragging_sat then
-s = math.clamp((offset - items["sat"].AbsolutePosition).X / items["sat"].AbsoluteSize.X, 0, 1)
-v = 1 - math.clamp((offset - items["sat"].AbsolutePosition).Y / items["sat"].AbsoluteSize.Y, 0, 1)
+s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X, 0, 1)
+v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y, 0, 1)
 elseif dragging_hue then
-h = math.clamp((offset - items[ "hue_gradient" ].AbsolutePosition).X / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
+h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
 elseif dragging_alpha then
-a = 1 - math.clamp((offset - items[ "alpha_gradient" ].AbsolutePosition).X / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
+a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
 end
 cfg.set()
 end
-
 items[ "colorpicker" ].MouseButton1Click:Connect(function()
 cfg.open = not cfg.open
 cfg.set_visible(cfg.open)
 end)
-
 items[ "sat" ].MouseButton1Down:Connect(function()
 dragging_sat = true
 end)
-
 items[ "hue_gradient" ].MouseButton1Down:Connect(function()
 dragging_hue = true
 end)
-
 items[ "alpha_gradient" ].MouseButton1Down:Connect(function()
 dragging_alpha = true
 end)
-
 library:connection(uis.InputChanged, function(input)
 if (dragging_sat or dragging_hue or dragging_alpha) then
 cfg.update_color()
 end
 end)
-
 library:connection(uis.InputEnded, function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging_sat = false
@@ -2389,7 +2376,6 @@ dragging_hue = false
 dragging_alpha = false
 end
 end)
-
 items[ "input" ].FocusLost:Connect(function()
 local text = items[ "input" ].Text
 local r, g, b, a = library:convert(text)
@@ -2397,15 +2383,12 @@ if r and g and b and a then
 cfg.set(rgb(r, g, b), 1 - a)
 end
 end)
-
 items[ "input" ].Focused:Connect(function()
 library:tween(items[ "input" ], {TextColor3 = rgb(245, 245, 245)})
 end)
-
 items[ "input" ].FocusLost:Connect(function()
 library:tween(items[ "input" ], {TextColor3 = rgb(72, 72, 72)})
 end)
-
 cfg.set(cfg.color, cfg.alpha)
 config_flags[cfg.flag] = cfg.set
 return setmetatable(cfg, library)
