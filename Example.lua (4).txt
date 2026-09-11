@@ -1,4 +1,4 @@
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/i77lhm/Libraries/refs/heads/main/Millenium/Library.lua"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/zwunio/Millenium/main/Library.lua"))()
 
 -- 1. Set the scale factor
 local SCALE = 0.7
