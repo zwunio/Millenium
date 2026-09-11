@@ -70,6 +70,7 @@ config_flags = {},
 connections = {},
 notifications = {notifs = {}},
 current_open;
+scale = 1; -- Global scale factor
 }
 local themes = {
 preset = {
@@ -187,6 +188,11 @@ function library:tween(obj, properties, easing_style, time)
 local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties):Play()
 return tween
 end
+function library:getMousePos()
+local mousePos = uis:GetMouseLocation()
+local scale = library.scale
+return vec2(mousePos.X / scale, mousePos.Y / scale)
+end
 function library:resizify(frame)
 local Frame = Instance.new("TextButton")
 Frame.Position = dim2(1, -10, 1, -10)
@@ -204,7 +210,8 @@ local og_size = frame.Size
 Frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 resizing = true
-start = input.Position
+local mousePos = library:getMousePos()
+start = mousePos
 start_size = frame.Size
 end
 end)
@@ -215,9 +222,9 @@ end
 end)
 library:connection(uis.InputChanged, function(input, game_event)
 if resizing then
-local viewport_x = camera.ViewportSize.X
-local viewport_y = camera.ViewportSize.Y
-local mousePos = uis:GetMouseLocation()
+local viewport_x = camera.ViewportSize.X / library.scale
+local viewport_y = camera.ViewportSize.Y / library.scale
+local mousePos = library:getMousePos()
 local current_size = dim2(
 start_size.X.Scale,
 math.clamp(
@@ -249,7 +256,7 @@ local str = string.format("flagnumber%s", index)
 return str;
 end
 function library:mouse_in_frame(uiobject)
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getMousePos()
 local y_cond = uiobject.AbsolutePosition.Y <= mousePos.Y and mousePos.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
 local x_cond = uiobject.AbsolutePosition.X <= mousePos.X and mousePos.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
 return (y_cond and x_cond)
@@ -261,7 +268,8 @@ local start
 frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging = true
-start = input.Position
+local mousePos = library:getMousePos()
+start = mousePos
 start_size = frame.Position
 end
 end)
@@ -272,9 +280,9 @@ end
 end)
 library:connection(uis.InputChanged, function(input, game_event)
 if dragging then
-local viewport_x = camera.ViewportSize.X
-local viewport_y = camera.ViewportSize.Y
-local mousePos = uis:GetMouseLocation()
+local viewport_x = camera.ViewportSize.X / library.scale
+local viewport_y = camera.ViewportSize.Y / library.scale
+local mousePos = library:getMousePos()
 local current_position = dim2(
 0,
 clamp(
@@ -420,11 +428,12 @@ suffix = properties.suffix or properties.Suffix or "tech";
 name = properties.name or properties.Name or "nebula";
 game_name = properties.gameInfo or properties.game_info or properties.GameInfo or "Milenium for Counter-Strike: Global Offensive";
 size = properties.size or properties.Size or dim2(0, 700, 0, 565);
-scale = properties.scale or properties.Scale or 1; -- Add scale parameter
+scale = properties.scale or properties.Scale or 1;
 selected_tab;
 items = {};
 tween;
 }
+library.scale = cfg.scale
 library[ "items" ] = library:create( "ScreenGui" , {
 Parent = coregui;
 Name = "\0";
@@ -439,19 +448,12 @@ Enabled = false;
 ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
 IgnoreGuiInset = true;
 });
--- Apply UIScale to both ScreenGuis so ALL elements inherit it
-local uiScaleMain = Instance.new("UIScale")
-uiScaleMain.Scale = cfg.scale
-uiScaleMain.Parent = library[ "items" ]
-local uiScaleOther = Instance.new("UIScale")
-uiScaleOther.Scale = cfg.scale
-uiScaleOther.Parent = library[ "other" ]
 local items = cfg.items; do
 items[ "main" ] = library:create( "Frame" , {
 Parent = library[ "items" ];
 Size = cfg.size;
 Name = "\0";
-Position = dim2(0.5, -cfg.size.X.Offset / 2, 0.5, -cfg.size.Y.Offset / 2);
+Position = dim2(0.5, -(cfg.size.X.Offset * cfg.scale) / 2, 0.5, -(cfg.size.Y.Offset * cfg.scale) / 2);
 BorderColor3 = rgb(0, 0, 0);
 BorderSizePixel = 0;
 BackgroundColor3 = rgb(14, 14, 16)
@@ -1601,7 +1603,7 @@ library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingSt
 end)
 library:connection(uis.InputChanged, function(input)
 if cfg.dragging then
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getMousePos()
 local size_x = (mousePos.X - items[ "slider" ].AbsolutePosition.X) / items[ "slider" ].AbsoluteSize.X
 local value = ((cfg.max - cfg.min) * size_x) + cfg.min
 cfg.set(value)
@@ -2340,7 +2342,7 @@ items[ "input" ].Text ..= library:round(1 - a, 0.01)
 cfg.callback(Color, a)
 end
 function cfg.update_color()
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getMousePos()
 if dragging_sat then
 s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X, 0, 1)
 v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y, 0, 1)
@@ -3159,5 +3161,6 @@ task.wait(1)
 items[ "notification" ]:Destroy()
 end)
 end
+--
 --
 return library
