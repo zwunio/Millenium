@@ -638,13 +638,6 @@ library:draggify(items[ "main" ])
 library:resizify(items[ "main" ])
 end
 function cfg.toggle_menu(bool)
--- WIP
--- if cfg.tween then
---     cfg.tween:Cancel()
--- end
--- items[ "main" ].Size = dim2(items[ "main" ].Size.Scale.X, items[ "main" ].Size.Offset.X - 20, items[ "main" ].Size.Scale.Y, items[ "main" ].Size.Offset.Y - 20)
--- library:tween(items[ "tab_holder" ], {Size = dim2(1, -196, 1, -81)}, Enum.EasingStyle.Quad, 0.4)
--- cfg.tween =
 library[ "items" ].Enabled = bool
 end
 return setmetatable(cfg, library)
@@ -653,9 +646,8 @@ function library:tab(properties)
 local cfg = {
 name = properties.name or properties.Name or "visuals";
 icon = properties.icon or properties.Icon or "http://www.roblox.com/asset/?id=6034767608";
--- multi
 tabs = properties.tabs or properties.Tabs or {"Main", "Misc.", "Settings"};
-pages = {}; -- data store for multi sections
+pages = {};
 current_multi;
 items = {};
 }
@@ -671,7 +663,6 @@ Size = dim2(1, -216, 1, -101);
 BorderSizePixel = 0;
 BackgroundColor3 = rgb(255, 255, 255)
 });
--- Tab buttons
 items[ "button" ] = library:create( "TextButton" , {
 FontFace = fonts.font;
 TextColor3 = rgb(255, 255, 255);
@@ -730,8 +721,6 @@ Parent = items[ "button" ];
 Enabled = false;
 ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 });
---
--- Multi Sections
 items[ "multi_section_button_holder" ] = library:create( "Frame" , {
 Parent = library.cache;
 BackgroundTransparency = 1;
@@ -758,7 +747,6 @@ PaddingLeft = dim(0, 7)
 for _, section in cfg.tabs do
 local data = {items = {}}
 local multi_items = data.items; do
--- Button
 multi_items[ "button" ] = library:create( "TextButton" , {
 FontFace = fonts.font;
 TextColor3 = rgb(255, 255, 255);
@@ -819,8 +807,6 @@ library:create( "UICorner" , {
 Parent = multi_items[ "button" ];
 CornerRadius = dim(0, 7)
 });
---
--- Tab
 multi_items[ "tab" ] = library:create( "Frame" , {
 Parent = library.cache;
 BackgroundTransparency = 1;
@@ -846,16 +832,12 @@ Parent = multi_items[ "tab" ];
 PaddingRight = dim(0, 7);
 PaddingLeft = dim(0, 7)
 });
---
 end
 data.text = multi_items[ "name" ]
 data.accent = multi_items[ "accent" ]
 data.button = multi_items[ "button" ]
 data.page = multi_items[ "tab" ]
 data.parent = setmetatable(data, library):sub_tab({}).items[ "tab_parent" ]
--- Old column code
--- data.left = multi_items[ "left" ]
--- data.right = multi_items[ "right" ]
 function data.open_page()
 local page = cfg.current_multi;
 if page and page.text ~= data.text then
@@ -886,7 +868,6 @@ end)
 cfg.pages[#cfg.pages + 1] = setmetatable(data, library)
 end
 cfg.pages[1].open_page()
---
 end
 function cfg.open_tab()
 local selected_tab = self.selected_tab
@@ -956,7 +937,6 @@ PaddingLeft = dim(0, 5)
 end;
 return setmetatable(cfg, library)
 end
--- Miscellaneous
 function library:column(properties)
 local cfg = {items = {}, size = properties.size or 1}
 local items = cfg.items; do
@@ -1007,7 +987,6 @@ SortOrder = Enum.SortOrder.LayoutOrder;
 end
 return setmetatable(cfg, library)
 end
---
 function library:section(properties)
 local cfg = {
 name = properties.name or properties.Name or "section";
@@ -1232,7 +1211,7 @@ enabled = options.enabled or nil,
 name = options.name or "Toggle",
 info = options.info or nil,
 flag = options.flag or library:next_flag(),
-type = options.type and string.lower(options.type) or rand == 1 and "toggle" or "checkbox"; -- "toggle", "checkbox"
+type = options.type and string.lower(options.type) or rand == 1 and "toggle" or "checkbox";
 default = options.default or false,
 folding = options.folding or false,
 callback = options.callback or function() end,
@@ -1310,7 +1289,6 @@ Parent = items[ "right_components" ];
 Padding = dim(0, 9);
 SortOrder = Enum.SortOrder.LayoutOrder
 });
--- Toggle
 if cfg.type == "checkbox" then
 items[ "toggle_button" ] = library:create( "TextButton" , {
 FontFace = fonts.small;
@@ -1415,7 +1393,6 @@ Parent = items[ "circle" ];
 CornerRadius = dim(0, 999)
 });
 end
---
 end;
 function cfg.set(bool)
 if cfg.type == "checkbox" then
@@ -1441,7 +1418,7 @@ items[ "toggle_button" ].MouseButton1Click:Connect(function()
 cfg.enabled = not cfg.enabled
 cfg.set(cfg.enabled)
 end)
-if cfg.seperator then -- ok bro my lua either sucks or this was a pain in the ass to make (simple if statement aswell ð    )
+if cfg.seperator then
 library:create( "Frame" , {
 AnchorPoint = vec2(0, 1);
 Parent = self.items[ "elements" ];
@@ -1463,7 +1440,6 @@ suffix = options.suffix or "",
 flag = options.flag or library:next_flag(),
 callback = options.callback or function() end,
 info = options.info or nil;
--- value settings
 min = options.min or options.minimum or 0,
 max = options.max or options.maximum or 100,
 intervals = options.interval or options.decimal or 1,
@@ -1668,7 +1644,6 @@ callback = options.callback or function() end;
 multi = options.multi or false;
 scrolling = options.scrolling or false;
 width = options.width or 130;
--- Ignore these
 open = false;
 option_instances = {};
 multi_items = {};
@@ -1680,7 +1655,6 @@ seperator = options.seperator or options.Seperator or true;
 cfg.default = options.default or (cfg.multi and {cfg.items[1]}) or cfg.items[1] or "None"
 flags[cfg.flag] = cfg.default
 local items = cfg.items; do
--- Element
 items[ "dropdown_object" ] = library:create( "TextButton" , {
 FontFace = fonts.small;
 TextColor3 = rgb(0, 0, 0);
@@ -1804,8 +1778,6 @@ Size = dim2(0, 12, 0, 12);
 BorderSizePixel = 0;
 BackgroundColor3 = rgb(255, 255, 255)
 });
---
--- Element Holder
 items[ "dropdown_holder" ] = library:create( "Frame" , {
 BorderColor3 = rgb(0, 0, 0);
 Parent = library[ "items" ];
@@ -1841,7 +1813,6 @@ library:create( "UICorner" , {
 Parent = items[ "outline" ];
 CornerRadius = dim(0, 4)
 });
---
 end
 function cfg.render_option(text)
 local button = library:create( "TextButton" , {
@@ -1900,7 +1871,7 @@ end
 cfg.option_instances = {}
 for _, option in list do
 local button = cfg.render_option(option)
-cfg.y_size += button.AbsoluteSize.Y + 6 -- super annoying manual sizing but oh well
+cfg.y_size += button.AbsoluteSize.Y + 6
 insert(cfg.option_instances, button)
 button.MouseButton1Down:Connect(function()
 if cfg.multi then
@@ -2036,7 +2007,7 @@ function library:colorpicker(options)
 local cfg = {
 name = options.name or "Color",
 flag = options.flag or library:next_flag(),
-color = options.color or color(1, 1, 1), -- Default to white color if not provided
+color = options.color or color(1, 1, 1),
 alpha = options.alpha and 1 - options.alpha or 0,
 open = false,
 callback = options.callback or function() end,
@@ -2054,7 +2025,6 @@ if not self.items.right_components then
 label = self:label({name = cfg.name, seperator = cfg.seperator})
 end
 local items = cfg.items; do
--- Component
 items[ "colorpicker" ] = library:create( "TextButton" , {
 FontFace = fonts.small;
 TextColor3 = rgb(0, 0, 0);
@@ -2092,8 +2062,6 @@ library:create( "UIGradient" , {
 Color = rgbseq{rgbkey(0, rgb(211, 211, 211)), rgbkey(1, rgb(211, 211, 211))};
 Parent = items[ "colorpicker_inline" ]
 });
---
--- Colorpicker
 items[ "colorpicker_holder" ] = library:create( "Frame" , {
 Parent = library[ "other" ];
 Name = "\0";
@@ -2331,19 +2299,18 @@ library:create( "UICorner" , {
 Parent = items[ "input" ];
 CornerRadius = dim(0, 3)
 });
-items[ "UICorenr" ] = library:create( "UICorner" , { -- fire misstypo (im not fixing this RAWR)
+items[ "UICorenr" ] = library:create( "UICorner" , {
 Parent = items[ "colorpicker_holder" ];
 Name = "\0";
 CornerRadius = dim(0, 4)
 });
---
 end;
 function cfg.set_visible(bool)
 items[ "colorpicker_fade" ].BackgroundTransparency = 0
 items[ "colorpicker_holder" ].Parent = bool and library[ "items" ] or library[ "other" ]
 items[ "colorpicker_holder" ].Position = dim_offset(items[ "colorpicker" ].AbsolutePosition.X, items[ "colorpicker" ].AbsolutePosition.Y + items[ "colorpicker" ].AbsoluteSize.Y + 45)
 library:tween(items[ "colorpicker_fade" ], {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, 0.4)
-library:tween(items[ "colorpicker_holder" ], {Position = items[ "colorpicker_holder" ].Position + dim_offset(0, 20)}) -- p100 check
+library:tween(items[ "colorpicker_holder" ], {Position = items[ "colorpicker_holder" ].Position + dim_offset(0, 20)})
 if not (self.sanity and library.current_open == self and self.open) then
 library:close_element(cfg)
 end
@@ -2359,12 +2326,10 @@ if alpha then
 a = alpha
 end
 local Color = hsv(h, s, v)
--- Ok so quick story, should I cache any of this? no...?? anyways I know this code is very bad but its your fault for buying a ui with animations (on a serious note im too lazy to make this look nice)
--- Also further note, yeah I kind of did this scale_factor * size-valuesize.plane because then I would have to do tomfoolery to make it clip properly.
 library:tween(items[ "hue_picker" ], {Position = dim2(0, (items[ "hue_gradient" ].AbsoluteSize.X - items[ "hue_picker" ].AbsoluteSize.X) * h, 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
 library:tween(items[ "alpha_picker" ], {Position = dim2(0, (items[ "alpha_gradient" ].AbsoluteSize.X - items[ "alpha_picker" ].AbsoluteSize.X) * (1 - a), 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
 library:tween(items[ "satvalpicker" ], {Position = dim2(0, s * (items[ "saturation_holder" ].AbsoluteSize.X - items[ "satvalpicker" ].AbsoluteSize.X), 1, 1 - v * (items[ "saturation_holder" ].AbsoluteSize.Y - items[ "satvalpicker" ].AbsoluteSize.Y))}, Enum.EasingStyle.Linear, 0.05)
-items[ "alpha_indicator" ]:FindFirstChildOfClass("UIGradient").Color = rgbseq{rgbkey(0, rgb(112, 112, 112)), rgbkey(1, hsv(h, 1, 1))}; -- shit code
+items[ "alpha_indicator" ]:FindFirstChildOfClass("UIGradient").Color = rgbseq{rgbkey(0, rgb(112, 112, 112)), rgbkey(1, hsv(h, 1, 1))};
 items[ "colorpicker" ].BackgroundColor3 = Color
 items[ "colorpicker_inline" ].BackgroundColor3 = Color
 items[ "saturation_holder" ].BackgroundColor3 = hsv(h, 1, 1)
@@ -2382,13 +2347,14 @@ cfg.callback(Color, a)
 end
 function cfg.update_color()
 local mousePos = uis:GetMouseLocation()
+local offset = vec2(mousePos.X, mousePos.Y - gui_offset)
 if dragging_sat then
-s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X, 0, 1)
-v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y, 0, 1)
+s = math.clamp((offset - items["sat"].AbsolutePosition).X / items["sat"].AbsoluteSize.X, 0, 1)
+v = 1 - math.clamp((offset - items["sat"].AbsolutePosition).Y / items["sat"].AbsoluteSize.Y, 0, 1)
 elseif dragging_hue then
-h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
+h = math.clamp((offset - items[ "hue_gradient" ].AbsolutePosition).X / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
 elseif dragging_alpha then
-a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
+a = 1 - math.clamp((offset - items[ "alpha_gradient" ].AbsolutePosition).X / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
 end
 cfg.set()
 end
@@ -2575,7 +2541,6 @@ key = cfg.key,
 active = cfg.active
 }
 local items = cfg.items; do
--- Component
 items[ "keybind_element" ] = library:create( "TextButton" , {
 FontFace = fonts.font;
 TextColor3 = rgb(0, 0, 0);
@@ -2667,8 +2632,6 @@ PaddingTop = dim(0, 1);
 PaddingRight = dim(0, 5);
 PaddingLeft = dim(0, 5)
 });
---
--- Mode Holder
 items[ "dropdown" ] = library:create( "Frame" , {
 BorderColor3 = rgb(0, 0, 0);
 Parent = library.items;
@@ -2736,9 +2699,8 @@ cfg.set_visible(false)
 cfg.open = false
 end)
 end
---
 end
-function cfg.modify_mode_color(path) -- ts so frikin tuff ð     
+function cfg.modify_mode_color(path)
 for _, v in cfg.hold_instances do
 v.TextColor3 = rgb(72, 72, 72)
 end
@@ -2897,7 +2859,7 @@ function library:settings(options)
 local cfg = {
 open = false;
 items = {};
-sanity = true; -- made this for my own sanity.
+sanity = true;
 }
 local items = cfg.items; do
 items[ "outline" ] = library:create( "Frame" , {
@@ -3005,11 +2967,11 @@ PaddingRight = dim(0, 4);
 PaddingLeft = dim(0, 4)
 });
 end
-function cfg.refresh_options(options_to_refresh) -- ignore goofy parameter
+function cfg.refresh_options(options_to_refresh)
 for _,option in cfg.data_store do
 option:Destroy()
 end
-for _, option_data in options_to_refresh do -- haha u skids no next >_<
+for _, option_data in options_to_refresh do
 local button = library:create( "TextButton" , {
 FontFace = fonts.small;
 TextColor3 = rgb(0, 0, 0);
@@ -3079,12 +3041,9 @@ config_holder = section:list({options = {"Report", "This", "Error", "To", "Finob
 local column = main:column({})
 local section = column:section({name = "Settings", side = "right", size = 1, default = true, icon = "rbxassetid://129380150574313"})
 section:textbox({name = "Config name:", flag = "config_name_text"})
-section:button({name = "Save", callback = function() writefile(library.directory .. "/configs/" .. flags["config_name_text"] or flags["config_name_list"] .. ".cfg", library:get_config()) library:update_config_list() notifications:create_notification({name = "Configs", info = "Saved config to:
-" .. flags["config_name_list"] or flags["config_name_text"]}) end})
-section:button({name = "Load", callback = function() library:load_config(readfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg"))  library:update_config_list() notifications:create_notification({name = "Configs", info = "Loaded config:
-" .. flags["config_name_list"]}) end})
-section:button({name = "Delete", callback = function() delfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg")  library:update_config_list() notifications:create_notification({name = "Configs", info = "Deleted config:
-" .. flags["config_name_list"]}) end})
+section:button({name = "Save", callback = function() writefile(library.directory .. "/configs/" .. flags["config_name_text"] or flags["config_name_list"] .. ".cfg", library:get_config()) library:update_config_list() notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. flags["config_name_list"] or flags["config_name_text"]}) end})
+section:button({name = "Load", callback = function() library:load_config(readfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg"))  library:update_config_list() notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. flags["config_name_list"]}) end})
+section:button({name = "Delete", callback = function() delfile(library.directory .. "/configs/" .. flags["config_name_list"] .. ".cfg")  library:update_config_list() notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. flags["config_name_list"]}) end})
 section:colorpicker({name = "Menu Accent", callback = function(color, alpha) library:update_theme("accent", color) end, color = themes.preset.accent})
 section:keybind({name = "Menu Bind", callback = function(bool) window.toggle_menu(bool) end, default = true})
 end
@@ -3217,6 +3176,5 @@ task.wait(1)
 items[ "notification" ]:Destroy()
 end)
 end
---
 --
 return library
