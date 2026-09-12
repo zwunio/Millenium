@@ -1,7 +1,9 @@
 --[[
 Milenium Library
--> Made by @finobe
--> Fixed scaling, colorpickers, and touch input
+-> Fixed mobile support
+-> Proper touch input handling
+-> Fixed colorpickers
+-> Added mobile toggle button
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -69,7 +71,7 @@ config_flags = {},
 connections = {},
 notifications = {notifs = {}},
 current_open;
-scale = 1; -- Global scale factor
+scale = 1;
 }
 local themes = {
 preset = {
@@ -195,12 +197,54 @@ local scale = library.scale or 1
 return Vector2.new(mousePos.X / scale, mousePos.Y / scale)
 end
 
--- FIXED: All mouse position checks now use scaled coordinates
 function library:mouse_in_frame(uiobject)
 local mousePos = library:getScaledMousePos()
 local y_cond = uiobject.AbsolutePosition.Y <= mousePos.Y and mousePos.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
 local x_cond = uiobject.AbsolutePosition.X <= mousePos.X and mousePos.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
 return (y_cond and x_cond)
+end
+
+-- FIXED: All dragging/resizing now properly handles touch input
+function library:draggify(frame)
+local dragging = false
+local start_size = frame.Position
+local start
+frame.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = true
+local mousePos = library:getScaledMousePos()
+start = mousePos
+start_size = frame.Position
+end
+end)
+frame.InputEnded:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = false
+end
+end)
+library:connection(uis.InputChanged, function(input, game_event)
+if dragging then
+local viewport_x = camera.ViewportSize.X / library.scale
+local viewport_y = camera.ViewportSize.Y / library.scale
+local mousePos = library:getScaledMousePos()
+local current_position = dim2(
+0,
+clamp(
+start_size.X.Offset + (mousePos.X - start.X),
+0,
+viewport_x - frame.Size.X.Offset
+),
+0,
+math.clamp(
+start_size.Y.Offset + (mousePos.Y - start.Y),
+0,
+viewport_y - frame.Size.Y.Offset
+)
+)
+library:tween(frame, {Position = current_position}, Enum.EasingStyle.Linear, 0.05)
+library:close_element()
+end
+end)
 end
 
 function library:resizify(frame)
@@ -265,48 +309,6 @@ function library:next_flag()
 local index = fag(library.flags) + 1;
 local str = string.format("flagnumber%s", index)
 return str;
-end
-
-function library:draggify(frame)
-local dragging = false
-local start_size = frame.Position
-local start
-frame.InputBegan:Connect(function(input)
-if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-dragging = true
-local mousePos = library:getScaledMousePos()
-start = mousePos
-start_size = frame.Position
-end
-end)
-frame.InputEnded:Connect(function(input)
-if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-dragging = false
-end
-end)
-library:connection(uis.InputChanged, function(input, game_event)
-if dragging then
-local viewport_x = camera.ViewportSize.X / library.scale
-local viewport_y = camera.ViewportSize.Y / library.scale
-local mousePos = library:getScaledMousePos()
-local current_position = dim2(
-0,
-clamp(
-start_size.X.Offset + (mousePos.X - start.X),
-0,
-viewport_x - frame.Size.X.Offset
-),
-0,
-math.clamp(
-start_size.Y.Offset + (mousePos.Y - start.Y),
-0,
-viewport_y - frame.Size.Y.Offset
-)
-)
-library:tween(frame, {Position = current_position}, Enum.EasingStyle.Linear, 0.05)
-library:close_element()
-end
-end)
 end
 
 function library:convert(str)
@@ -2360,12 +2362,12 @@ end
 function cfg.update_color()
 local mousePos = library:getScaledMousePos()
 if dragging_sat then
-s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X * library.scale, 0, 1)
-v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y * library.scale, 0, 1)
+s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X, 0, 1)
+v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y, 0, 1)
 elseif dragging_hue then
-h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X * library.scale, 0, 1)
+h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
 elseif dragging_alpha then
-a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X * library.scale, 0, 1)
+a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
 end
 cfg.set()
 end
@@ -2373,12 +2375,12 @@ items[ "colorpicker" ].MouseButton1Click:Connect(function()
 cfg.open = not cfg.open
 cfg.set_visible(cfg.open)
 end)
-uis.InputChanged:Connect(function(input)
+library:connection(uis.InputChanged, function(input, game_event)
 if (dragging_sat or dragging_hue or dragging_alpha) and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 cfg.update_color()
 end
 end)
-library:connection(uis.InputEnded, function(input)
+library:connection(uis.InputEnded, function(input, game_event)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging_sat = false
 dragging_hue = false
@@ -2620,6 +2622,7 @@ Text = "LSHIFT";
 Parent = items[ "keybind_holder" ];
 Name = "\0";
 Size = dim2(1, -12, 0, 0);
+BorderSizePixel = 0;
 BackgroundTransparency = 1;
 TextXAlignment = Enum.TextXAlignment.Left;
 BorderSizePixel = 0;
@@ -2772,7 +2775,9 @@ cfg.open = not cfg.open
 cfg.set_visible(cfg.open)
 end)
 library:connection(uis.InputBegan, function(input, game_event)
--- FIXED: Now handles touch input properly
+if game_event then
+return
+end
 local selected_key = input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType
 if selected_key == cfg.key then
 if cfg.mode == "Toggle" then
@@ -2909,10 +2914,6 @@ Parent = items[ "elements" ]
 });
 library:create( "UICorner" , {
 Parent = items[ "outline" ];
-CornerRadius = dim(0, 7)
-});
-library:create( "UICorner" , {
-Parent = items[ "fade" ];
 CornerRadius = dim(0, 7)
 });
 items[ "tick" ] = library:create( "ImageButton" , {
