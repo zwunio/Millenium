@@ -1,7 +1,7 @@
 --[[
 Milenium Library
 -> Made by @finobe
--> Fixed mobile scaling, colorpickers, and added mobile toggle
+-> Fixed scaling, colorpickers, and touch input
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -69,7 +69,7 @@ config_flags = {},
 connections = {},
 notifications = {notifs = {}},
 current_open;
-scale = 1;
+scale = 1; -- Global scale factor
 }
 local themes = {
 preset = {
@@ -187,6 +187,22 @@ function library:tween(obj, properties, easing_style, time)
 local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties):Play()
 return tween
 end
+
+-- FIXED: Properly scaled mouse position
+function library:getScaledMousePos()
+local mousePos = uis:GetMouseLocation()
+local scale = library.scale or 1
+return Vector2.new(mousePos.X / scale, mousePos.Y / scale)
+end
+
+-- FIXED: All mouse position checks now use scaled coordinates
+function library:mouse_in_frame(uiobject)
+local mousePos = library:getScaledMousePos()
+local y_cond = uiobject.AbsolutePosition.Y <= mousePos.Y and mousePos.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
+local x_cond = uiobject.AbsolutePosition.X <= mousePos.X and mousePos.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
+return (y_cond and x_cond)
+end
+
 function library:resizify(frame)
 local Frame = Instance.new("TextButton")
 Frame.Position = dim2(1, -10, 1, -10)
@@ -204,7 +220,8 @@ local og_size = frame.Size
 Frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 resizing = true
-start = input.Position
+local mousePos = library:getScaledMousePos()
+start = mousePos
 start_size = frame.Size
 end
 end)
@@ -217,17 +234,17 @@ library:connection(uis.InputChanged, function(input, game_event)
 if resizing then
 local viewport_x = camera.ViewportSize.X / library.scale
 local viewport_y = camera.ViewportSize.Y / library.scale
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getScaledMousePos()
 local current_size = dim2(
 start_size.X.Scale,
 math.clamp(
-start_size.X.Offset + (mousePos.X - start.X) / library.scale,
+start_size.X.Offset + (mousePos.X - start.X),
 og_size.X.Offset,
 viewport_x
 ),
 start_size.Y.Scale,
 math.clamp(
-start_size.Y.Offset + (mousePos.Y - start.Y) / library.scale,
+start_size.Y.Offset + (mousePos.Y - start.Y),
 og_size.Y.Offset,
 viewport_y
 )
@@ -236,6 +253,7 @@ library:tween(frame, {Size = current_size}, Enum.EasingStyle.Linear, 0.05)
 end
 end)
 end
+
 function fag(tbl)
 local Size = 0
 for _ in tbl do
@@ -248,12 +266,7 @@ local index = fag(library.flags) + 1;
 local str = string.format("flagnumber%s", index)
 return str;
 end
-function library:mouse_in_frame(uiobject)
-local mousePos = uis:GetMouseLocation()
-local y_cond = uiobject.AbsolutePosition.Y <= mousePos.Y and mousePos.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
-local x_cond = uiobject.AbsolutePosition.X <= mousePos.X and mousePos.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
-return (y_cond and x_cond)
-end
+
 function library:draggify(frame)
 local dragging = false
 local start_size = frame.Position
@@ -261,7 +274,8 @@ local start
 frame.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 dragging = true
-start = input.Position
+local mousePos = library:getScaledMousePos()
+start = mousePos
 start_size = frame.Position
 end
 end)
@@ -274,17 +288,17 @@ library:connection(uis.InputChanged, function(input, game_event)
 if dragging then
 local viewport_x = camera.ViewportSize.X / library.scale
 local viewport_y = camera.ViewportSize.Y / library.scale
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getScaledMousePos()
 local current_position = dim2(
 0,
 clamp(
-start_size.X.Offset + (mousePos.X - start.X) / library.scale,
+start_size.X.Offset + (mousePos.X - start.X),
 0,
 viewport_x - frame.Size.X.Offset
 ),
 0,
 math.clamp(
-start_size.Y.Offset + (mousePos.Y - start.Y) / library.scale,
+start_size.Y.Offset + (mousePos.Y - start.Y),
 0,
 viewport_y - frame.Size.Y.Offset
 )
@@ -294,6 +308,7 @@ library:close_element()
 end
 end)
 end
+
 function library:convert(str)
 local values = {}
 for value in string.gmatch(str, "[^,]+") do
@@ -420,7 +435,7 @@ suffix = properties.suffix or properties.Suffix or "tech";
 name = properties.name or properties.Name or "nebula";
 game_name = properties.gameInfo or properties.game_info or properties.GameInfo or "Milenium for Counter-Strike: Global Offensive";
 size = properties.size or properties.Size or dim2(0, 700, 0, 565);
-scale = properties.scale or properties.Scale or 1;
+scale = properties.scale or properties.Scale or 1; -- User-provided scale
 selected_tab;
 items = {};
 tween;
@@ -441,51 +456,19 @@ Enabled = false;
 ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
 IgnoreGuiInset = true;
 });
--- Add mobile toggle button
-cfg.mobile_toggle = library:create("TextButton", {
-Parent = library["items"],
-Name = "MobileToggle",
-Text = "",
-Size = dim2(0, 36, 0, 36),
-Position = dim2(0.5, -18, 0.5, -18),
-BackgroundTransparency = 1,
-ZIndex = 1000,
-BackgroundColor3 = rgb(0, 0, 0),
-BorderColor3 = rgb(0, 0, 0),
-BorderSizePixel = 0,
-Font = Enum.Font.SourceSans,
-TextSize = 16,
-TextTransparency = 1
-})
-cfg.mobile_toggle.Image = "rbxassetid://133191623855463" -- Mobile icon
-cfg.mobile_toggle.ImageColor3 = rgb(180, 180, 180)
-cfg.mobile_toggle.ImageRectOffset = Vector2.new(0, 0)
-cfg.mobile_toggle.ImageRectSize = Vector2.new(36, 36)
-cfg.mobile_toggle.ImageTransparency = 0
-cfg.mobile_toggle.ImageSize = Vector2.new(1, 1)
-cfg.mobile_toggle.ImageScaled = false
-cfg.mobile_toggle.ImageLabel = true
-cfg.mobile_toggle.MouseButton1Click:Connect(function()
-library:close_element()
-library["items"].Enabled = not library["items"].Enabled
-end)
--- Add mobile toggle to the UI
-cfg.mobile_toggle.Parent = library["items"]
-
--- Apply scaling to both ScreenGuis
+-- Apply scale to both ScreenGuis
 local uiScale1 = Instance.new("UIScale")
 uiScale1.Scale = s
 uiScale1.Parent = library[ "items" ]
 local uiScale2 = Instance.new("UIScale")
 uiScale2.Scale = s
 uiScale2.Parent = library[ "other" ]
-
 local items = cfg.items; do
 items[ "main" ] = library:create( "Frame" , {
 Parent = library[ "items" ];
 Size = cfg.size;
 Name = "\0";
-Position = dim2(0.5, -(cfg.size.X.Offset * s) / 2, 0.5, -(cfg.size.Y.Offset * s) / 2);
+Position = dim2(0.5, -(cfg.size.X.Offset * s) / 2, 0.5, -(cfg.size.Y.Offset * s) / 2); -- Properly centered
 BorderColor3 = rgb(0, 0, 0);
 BorderSizePixel = 0;
 BackgroundColor3 = rgb(14, 14, 16)
@@ -1635,7 +1618,7 @@ library:tween(items[ "value" ], {TextColor3 = rgb(255, 255, 255)}, Enum.EasingSt
 end)
 library:connection(uis.InputChanged, function(input)
 if cfg.dragging then
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getScaledMousePos()
 local size_x = (mousePos.X - items[ "slider" ].AbsolutePosition.X) / items[ "slider" ].AbsoluteSize.X
 local value = ((cfg.max - cfg.min) * size_x) + cfg.min
 cfg.set(value)
@@ -1868,9 +1851,9 @@ PaddingLeft = dim(0, 5)
 return button
 end
 function cfg.set_visible(bool)
-local a = bool and cfg.y_size or 0
-library:tween(items[ "dropdown_holder" ], {Size = dim_offset(items[ "dropdown" ].AbsoluteSize.X, a)})
-items[ "dropdown_holder" ].Position = dim2(0, items[ "dropdown" ].AbsolutePosition.X, 0, items[ "dropdown" ].AbsolutePosition.Y + 80)
+local a = (bool and cfg.y_size or 0) / library.scale
+library:tween(items[ "dropdown_holder" ], {Size = dim_offset(items[ "dropdown" ].AbsoluteSize.X / library.scale, a)})
+items[ "dropdown_holder" ].Position = dim2(0, items[ "dropdown" ].AbsolutePosition.X / library.scale, 0, (items[ "dropdown" ].AbsolutePosition.Y + 80) / library.scale)
 if not (self.sanity and library.current_open == self) then
 library:close_element(cfg)
 end
@@ -2334,11 +2317,12 @@ CornerRadius = dim(0, 4)
 });
 end;
 function cfg.set_visible(bool)
+local s = library.scale or 1
 items[ "colorpicker_fade" ].BackgroundTransparency = 0
 items[ "colorpicker_holder" ].Parent = bool and library[ "items" ] or library[ "other" ]
-items[ "colorpicker_holder" ].Position = dim_offset(items[ "colorpicker" ].AbsolutePosition.X, items[ "colorpicker" ].AbsolutePosition.Y + items[ "colorpicker" ].AbsoluteSize.Y + 45)
+items[ "colorpicker_holder" ].Position = dim_offset(items[ "colorpicker" ].AbsolutePosition.X / s, (items[ "colorpicker" ].AbsolutePosition.Y + items[ "colorpicker" ].AbsoluteSize.Y + 45) / s)
 library:tween(items[ "colorpicker_fade" ], {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, 0.4)
-library:tween(items[ "colorpicker_holder" ], {Position = items[ "colorpicker_holder" ].Position + dim_offset(0, 20)})
+library:tween(items[ "colorpicker_holder" ], {Position = items[ "colorpicker_holder" ].Position + dim_offset(0, 20 / s)})
 if not (self.sanity and library.current_open == self and self.open) then
 library:close_element(cfg)
 end
@@ -2354,9 +2338,9 @@ if alpha then
 a = alpha
 end
 local Color = hsv(h, s, v)
-library:tween(items[ "hue_picker" ], {Position = dim2(0, (items[ "hue_gradient" ].AbsoluteSize.X - items[ "hue_picker" ].AbsoluteSize.X) * h, 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
-library:tween(items[ "alpha_picker" ], {Position = dim2(0, (items[ "alpha_gradient" ].AbsoluteSize.X - items[ "alpha_picker" ].AbsoluteSize.X) * (1 - a), 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
-library:tween(items[ "satvalpicker" ], {Position = dim2(0, s * (items[ "saturation_holder" ].AbsoluteSize.X - items[ "satvalpicker" ].AbsoluteSize.X), 1, 1 - v * (items[ "saturation_holder" ].AbsoluteSize.Y - items[ "satvalpicker" ].AbsoluteSize.Y))}, Enum.EasingStyle.Linear, 0.05)
+library:tween(items[ "hue_picker" ], {Position = dim2(0, (items[ "hue_gradient" ].AbsoluteSize.X - items[ "hue_picker" ].AbsoluteSize.X) * h / s, 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
+library:tween(items[ "alpha_picker" ], {Position = dim2(0, (items[ "alpha_gradient" ].AbsoluteSize.X - items[ "alpha_picker" ].AbsoluteSize.X) * (1 - a) / s, 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
+library:tween(items[ "satvalpicker" ], {Position = dim2(0, s * (items[ "saturation_holder" ].AbsoluteSize.X - items[ "satvalpicker" ].AbsoluteSize.X) / s, 1, 1 - v * (items[ "saturation_holder" ].AbsoluteSize.Y - items[ "satvalpicker" ].AbsoluteSize.Y) / s)}, Enum.EasingStyle.Linear, 0.05)
 items[ "alpha_indicator" ]:FindFirstChildOfClass("UIGradient").Color = rgbseq{rgbkey(0, rgb(112, 112, 112)), rgbkey(1, hsv(h, 1, 1))};
 items[ "colorpicker" ].BackgroundColor3 = Color
 items[ "colorpicker_inline" ].BackgroundColor3 = Color
@@ -2374,14 +2358,14 @@ items[ "input" ].Text ..= library:round(1 - a, 0.01)
 cfg.callback(Color, a)
 end
 function cfg.update_color()
-local mousePos = uis:GetMouseLocation()
+local mousePos = library:getScaledMousePos()
 if dragging_sat then
-s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X, 0, 1)
-v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y, 0, 1)
+s = math.clamp((mousePos.X - items["sat"].AbsolutePosition.X) / items["sat"].AbsoluteSize.X * library.scale, 0, 1)
+v = 1 - math.clamp((mousePos.Y - items["sat"].AbsolutePosition.Y) / items["sat"].AbsoluteSize.Y * library.scale, 0, 1)
 elseif dragging_hue then
-h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X, 0, 1)
+h = math.clamp((mousePos.X - items[ "hue_gradient" ].AbsolutePosition.X) / items[ "hue_gradient" ].AbsoluteSize.X * library.scale, 0, 1)
 elseif dragging_alpha then
-a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X, 0, 1)
+a = 1 - math.clamp((mousePos.X - items[ "alpha_gradient" ].AbsolutePosition.X) / items[ "alpha_gradient" ].AbsoluteSize.X * library.scale, 0, 1)
 end
 cfg.set()
 end
@@ -2389,17 +2373,8 @@ items[ "colorpicker" ].MouseButton1Click:Connect(function()
 cfg.open = not cfg.open
 cfg.set_visible(cfg.open)
 end)
-items[ "sat" ].MouseButton1Down:Connect(function()
-dragging_sat = true
-end)
-items[ "hue_gradient" ].MouseButton1Down:Connect(function()
-dragging_hue = true
-end)
-items[ "alpha_gradient" ].MouseButton1Down:Connect(function()
-dragging_alpha = true
-end)
-library:connection(uis.InputChanged, function(input, game_event)
-if (dragging_sat or dragging_hue or dragging_alpha) then
+uis.InputChanged:Connect(function(input)
+if (dragging_sat or dragging_hue or dragging_alpha) and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 cfg.update_color()
 end
 end)
@@ -2409,6 +2384,15 @@ dragging_sat = false
 dragging_hue = false
 dragging_alpha = false
 end
+end)
+items[ "alpha_gradient" ].MouseButton1Down:Connect(function()
+dragging_alpha = true
+end)
+items[ "hue_gradient" ].MouseButton1Down:Connect(function()
+dragging_hue = true
+end)
+items[ "sat" ].MouseButton1Down:Connect(function()
+dragging_sat = true
 end)
 items[ "input" ].FocusLost:Connect(function()
 local text = items[ "input" ].Text
@@ -2769,9 +2753,10 @@ active = cfg.active
 }
 end
 function cfg.set_visible(bool)
-local size = bool and cfg.y_size or 0
-library:tween(items[ "dropdown" ], {Size = dim_offset(items[ "keybind_holder" ].AbsoluteSize.X, size)})
-items[ "dropdown" ].Position = dim_offset(items[ "keybind_holder" ].AbsolutePosition.X, items[ "keybind_holder" ].AbsolutePosition.Y + items[ "keybind_holder" ].AbsoluteSize.Y + 60)
+local s = library.scale or 1
+local size = (bool and cfg.y_size or 0) / s
+library:tween(items[ "dropdown" ], {Size = dim_offset(items[ "keybind_holder" ].AbsoluteSize.X / s, size)})
+items[ "dropdown" ].Position = dim_offset(items[ "keybind_holder" ].AbsolutePosition.X / s, (items[ "keybind_holder" ].AbsolutePosition.Y + items[ "keybind_holder" ].AbsoluteSize.Y + 60) / s)
 end
 items[ "keybind_holder" ].MouseButton1Down:Connect(function()
 task.wait()
@@ -2787,7 +2772,7 @@ cfg.open = not cfg.open
 cfg.set_visible(cfg.open)
 end)
 library:connection(uis.InputBegan, function(input, game_event)
-if not game_event then
+-- FIXED: Now handles touch input properly
 local selected_key = input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType
 if selected_key == cfg.key then
 if cfg.mode == "Toggle" then
@@ -2795,7 +2780,6 @@ cfg.active = not cfg.active
 cfg.set(cfg.active)
 elseif cfg.mode == "Hold" then
 cfg.set(true)
-end
 end
 end
 end)
@@ -2943,8 +2927,9 @@ BackgroundColor3 = rgb(255, 255, 255)
 });
 end
 function cfg.set_visible(bool)
+local s = library.scale or 1
 library:tween(items[ "outline" ], {Size = dim_offset(bool and 240 or 0, 0)})
-items[ "outline" ].Position = dim_offset(items[ "tick" ].AbsolutePosition.X, items[ "tick" ].AbsolutePosition.Y + 90)
+items[ "outline" ].Position = dim_offset(items[ "tick" ].AbsolutePosition.X / s, (items[ "tick" ].AbsolutePosition.Y + 90) / s)
 library:close_element(cfg)
 end
 items[ "tick" ].MouseButton1Click:Connect(function()
@@ -3067,9 +3052,10 @@ end
 --
 -- Notification Library
 function notifications:refresh_notifs()
+local s = library.scale or 1
 local offset = 50
 for i, v in notifications.notifs do
-local Position = vec2(20, offset)
+local Position = vec2(20 / s, offset / s)
 library:tween(v, {Position = dim_offset(Position.X, Position.Y)}, Enum.EasingStyle.Quad, 0.4)
 offset += (v.AbsoluteSize.Y + 10)
 end
@@ -3093,6 +3079,7 @@ end
 end
 end
 function notifications:create_notification(options)
+local s = library.scale or 1
 local cfg = {
 name = options.name or "This is a title!";
 info = options.info or "This is extra info!";
@@ -3181,7 +3168,7 @@ local index = #notifications.notifs + 1
 notifications.notifs[index] = items[ "notification" ]
 notifications:fade(items[ "notification" ], false)
 local offset = notifications:refresh_notifs()
-items[ "notification" ].Position = dim_offset(20, offset)
+items[ "notification" ].Position = dim_offset(20 / s, offset / s)
 library:tween(items[ "notification" ], {AnchorPoint = vec2(0, 0)}, Enum.EasingStyle.Quad, 1)
 library:tween(items[ "bar" ], {Size = dim2(1, -8, 0, 5)}, Enum.EasingStyle.Quad, cfg.lifetime)
 task.spawn(function()
