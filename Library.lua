@@ -2,7 +2,7 @@
 Milenium Library
 -> Made by @finobe
 -> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
--> fixes: config delete/load, colorpicker outside-tap close + unscaled palette + dot snap on open, dropdown width, input text colors
+-> fixes: config delete/load, colorpicker palette + dots, dropdown width, input text tweens, outside-press close for all popups
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -250,7 +250,8 @@ end
 -- Library functions
 -- Misc functions
 function library:tween(obj, properties, easing_style, time)
-	local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties):Play()
+	local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties)
+	tween:Play()
 	return tween
 end
 
@@ -494,9 +495,6 @@ function library:connection(signal, callback)
 end
 
 function library:close_element(new_path)
-	if library.catcher then
-		library.catcher.Visible = false
-	end
 	local open_element = library.current_open
 	if open_element and new_path ~= open_element then
 		open_element.set_visible(false)
@@ -506,6 +504,48 @@ function library:close_element(new_path)
 		library.current_open = new_path or nil
 	end
 end
+
+-- tracks which popup is on top so outside-press and parent fallback work
+function library:register_open(popup_cfg, parent_cfg)
+	local prev = library.current_open
+	if prev ~= popup_cfg then
+		if prev and prev ~= parent_cfg then
+			prev.open = false
+			prev.set_visible(false)
+		end
+		popup_cfg.parent_popup = parent_cfg
+		library.current_open = popup_cfg
+	end
+end
+
+-- press anywhere outside the open popup (and outside its opener button) to close it
+library:connection(uis.InputBegan, function(input, game_event)
+	if game_event then
+		return
+	end
+	if not library:is_press(input) then
+		return
+	end
+	local current = library.current_open
+	if not current then
+		return
+	end
+	local position = input.Position
+	local function inside(frame)
+		if not frame then
+			return false
+		end
+		return position.X >= frame.AbsolutePosition.X
+			and position.X <= frame.AbsolutePosition.X + frame.AbsoluteSize.X
+			and position.Y >= frame.AbsolutePosition.Y
+			and position.Y <= frame.AbsolutePosition.Y + frame.AbsoluteSize.Y
+	end
+	if inside(current.popup_container) or inside(current.popup_opener) then
+		return
+	end
+	current.open = false
+	current.set_visible(false)
+end)
 
 function library:create(instance, options)
 	local ins = Instance.new(instance)
@@ -579,29 +619,6 @@ function library:window(properties)
 		BackgroundTransparency = 1,
 		Size = dim2(1, 0, 1, 0),
 	})
-
-	-- invisible full-screen catcher: tap outside an open colorpicker to close it
-	library["catcher"] = library:create("TextButton", {
-		Parent = library["items"],
-		Name = "\0",
-		Text = "",
-		AutoButtonColor = false,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = dim2(0, 0, 0, 0),
-		Size = dim2(1 / library.scale, 0, 1 / library.scale, 0),
-		ZIndex = 50,
-		Visible = false,
-	})
-
-	library["catcher"].MouseButton1Click:Connect(function()
-		library["catcher"].Visible = false
-		local open_element = library.current_open
-		if open_element and open_element.set_visible then
-			open_element.open = false
-			open_element.set_visible(false)
-		end
-	end)
 
 	local items = cfg.items
 	do
@@ -2290,8 +2307,15 @@ function library:dropdown(options)
 		local clamped = library:clamp_local(position, vec2(width_local, a))
 		items["dropdown_holder"].Position = dim_offset(clamped.X, clamped.Y)
 
-		if not (self.sanity and library.current_open == self) then
-			library:close_element(cfg)
+		if bool then
+			cfg.popup_container = items["dropdown_holder"]
+			cfg.popup_opener = items["dropdown"]
+			library:register_open(cfg, self)
+		else
+			if library.current_open == cfg then
+				local parent = cfg.parent_popup
+				library.current_open = (parent and parent.sanity and parent.set_visible) and parent or nil
+			end
 		end
 	end
 
@@ -2832,7 +2856,7 @@ function library:colorpicker(options)
 		})
 	end
 
-	-- keep the whole picker above the outside-tap catcher (GuiObjects only: corners/gradients/strokes have no ZIndex)
+	-- keep the whole picker above the window (GuiObjects only: corners/gradients/strokes have no ZIndex)
 	items["colorpicker_holder"].ZIndex = 60
 	for _, descendant in items["colorpicker_holder"]:GetDescendants() do
 		if descendant:IsA("GuiObject") then
@@ -2862,10 +2886,6 @@ function library:colorpicker(options)
 	end
 
 	function cfg.set_visible(bool)
-		if library.catcher then
-			library.catcher.Visible = false
-		end
-
 		items["colorpicker_fade"].BackgroundTransparency = 0
 		items["colorpicker_holder"].Parent = bool and library["items"] or library["other"]
 
@@ -2875,15 +2895,10 @@ function library:colorpicker(options)
 
 		library:tween(items["colorpicker_fade"], {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, 0.4)
 
-		if not (self.sanity and library.current_open == self and self.open) then
-			library:close_element(cfg)
-		end
-
-		if bool and library.catcher then
-			library.catcher.Visible = true
-		end
-
 		if bool then
+			cfg.popup_container = items["colorpicker_holder"]
+			cfg.popup_opener = items["colorpicker"]
+			library:register_open(cfg, self)
 			cfg.refresh_dots(true)
 			task.spawn(function()
 				task.wait()
@@ -2891,6 +2906,11 @@ function library:colorpicker(options)
 					cfg.refresh_dots(true)
 				end
 			end)
+		else
+			if library.current_open == cfg then
+				local parent = cfg.parent_popup
+				library.current_open = (parent and parent.sanity and parent.set_visible) and parent or nil
+			end
 		end
 	end
 
@@ -2991,21 +3011,25 @@ function library:colorpicker(options)
 		end
 	end)
 
+	-- white while typing, gray when idle; tweens kept, stale tweens cancelled so they never fight
+	local input_color_tween = nil
+	items["input"].Focused:Connect(function()
+		if input_color_tween then
+			input_color_tween:Cancel()
+		end
+		input_color_tween = library:tween(items["input"], {TextColor3 = rgb(245, 245, 245)})
+	end)
+
 	items["input"].FocusLost:Connect(function()
+		if input_color_tween then
+			input_color_tween:Cancel()
+		end
+		input_color_tween = library:tween(items["input"], {TextColor3 = rgb(72, 72, 72)}, Enum.EasingStyle.Quad, 0.12)
 		local text = items["input"].Text
 		local r, g, b, alpha = library:convert(text)
 		if r and g and b and alpha then
 			cfg.set(rgb(r, g, b), 1 - alpha)
 		end
-	end)
-
-	-- white while typing, gray when idle, instant swap (no flicker)
-	items["input"].Focused:Connect(function()
-		items["input"].TextColor3 = rgb(245, 245, 245)
-	end)
-
-	items["input"].FocusLost:Connect(function()
-		items["input"].TextColor3 = rgb(72, 72, 72)
 	end)
 
 	cfg.set(cfg.color, cfg.alpha)
@@ -3125,13 +3149,20 @@ function library:textbox(options)
 		cfg.set(items["input"].Text)
 	end)
 
-	-- white while typing, gray when idle, instant swap (no flicker)
+	-- white while typing, gray when idle; tweens kept, stale tweens cancelled so they never fight
+	local input_color_tween = nil
 	items["input"].Focused:Connect(function()
-		items["input"].TextColor3 = rgb(245, 245, 245)
+		if input_color_tween then
+			input_color_tween:Cancel()
+		end
+		input_color_tween = library:tween(items["input"], {TextColor3 = rgb(245, 245, 245)})
 	end)
 
 	items["input"].FocusLost:Connect(function()
-		items["input"].TextColor3 = rgb(72, 72, 72)
+		if input_color_tween then
+			input_color_tween:Cancel()
+		end
+		input_color_tween = library:tween(items["input"], {TextColor3 = rgb(72, 72, 72)}, Enum.EasingStyle.Quad, 0.12)
 	end)
 
 	if cfg.default then
@@ -3446,6 +3477,17 @@ function library:keybind(options)
 			+ vec2(0, items["keybind_holder"].AbsoluteSize.Y / library.scale + 60)
 		local clamped = library:clamp_local(position, vec2(width_local, size))
 		items["dropdown"].Position = dim_offset(clamped.X, clamped.Y)
+
+		if bool then
+			cfg.popup_container = items["dropdown"]
+			cfg.popup_opener = items["keybind_holder"]
+			library:register_open(cfg, self)
+		else
+			if library.current_open == cfg then
+				local parent = cfg.parent_popup
+				library.current_open = (parent and parent.sanity and parent.set_visible) and parent or nil
+			end
+		end
 	end
 
 	function cfg.start_binding()
@@ -3676,7 +3718,21 @@ function library:settings(options)
 		local clamped = library:clamp_local(position, vec2(240, items["outline"].AbsoluteSize.Y / library.scale))
 		items["outline"].Position = dim_offset(clamped.X, clamped.Y)
 
-		library:close_element(cfg)
+		if bool then
+			cfg.popup_container = items["outline"]
+			cfg.popup_opener = items["tick"]
+			library:register_open(cfg, self)
+		else
+			local current = library.current_open
+			if current and current ~= cfg and current.parent_popup == cfg then
+				current.open = false
+				current.set_visible(false)
+			end
+			if library.current_open == cfg then
+				local parent = cfg.parent_popup
+				library.current_open = (parent and parent.sanity and parent.set_visible) and parent or nil
+			end
+		end
 	end
 
 	items["tick"].MouseButton1Click:Connect(function()
