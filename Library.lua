@@ -2,7 +2,7 @@
 Milenium Library
 -> Made by @finobe
 -> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
--> fixes: config delete/load, colorpicker outside-tap close, dropdown width
+-> fixes: config delete/load, colorpicker outside-tap close, dropdown width, colorpicker ZIndex crash
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -2816,10 +2816,12 @@ function library:colorpicker(options)
 		})
 	end
 
-	-- keep the whole picker above the outside-tap catcher
+	-- keep the whole picker above the outside-tap catcher (GuiObjects only: corners/gradients/strokes have no ZIndex)
 	items["colorpicker_holder"].ZIndex = 60
 	for _, descendant in items["colorpicker_holder"]:GetDescendants() do
-		descendant.ZIndex += 60
+		if descendant:IsA("GuiObject") then
+			descendant.ZIndex += 60
+		end
 	end
 
 	function cfg.set_visible(bool)
