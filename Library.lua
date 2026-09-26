@@ -2,31 +2,21 @@
 Milenium Library
 -> Made by @finobe
 -> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
+-> fixes: config delete/load, colorpicker outside-tap close, dropdown width
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
 local players = game:GetService("Players")
 local ws = game:GetService("Workspace")
-local rs = game:GetService("ReplicatedStorage")
 local http_service = game:GetService("HttpService")
 local gui_service = game:GetService("GuiService")
-local lighting = game:GetService("Lighting")
-local run = game:GetService("RunService")
-local stats = game:GetService("Stats")
 local coregui = game:GetService("CoreGui")
-local debris = game:GetService("Debris")
 local tween_service = game:GetService("TweenService")
-local sound_service = game:GetService("SoundService")
 
 local vec2 = Vector2.new
-local vec3 = Vector3.new
 local dim2 = UDim2.new
 local dim = UDim.new
 local rect = Rect.new
-local cfr = CFrame.new
-local empty_cfr = cfr()
-local point_object_space = empty_cfr.PointToObjectSpace
-local angle = CFrame.Angles
 local dim_offset = UDim2.fromOffset
 local color = Color3.new
 local rgb = Color3.fromRGB
@@ -45,15 +35,6 @@ local gui_offset = gui_service:GetGuiInset().Y
 local max = math.max
 local floor = math.floor
 local min = math.min
-local abs = math.abs
-local noise = math.noise
-local rad = math.rad
-local random = math.random
-local pow = math.pow
-local sin = math.sin
-local pi = math.pi
-local tan = math.tan
-local atan2 = math.atan2
 local clamp = math.clamp
 local insert = table.insert
 local find = table.find
@@ -133,7 +114,9 @@ getgenv().library = {
 	is_mobile = is_mobile,
 	scale = ui_scale,
 	cache = nil,
+	config_paths = {},
 }
+local library = getgenv().library
 
 local themes = {
 	preset = {
@@ -431,9 +414,14 @@ function library:update_config_list()
 		return
 	end
 	local list = {}
-	for idx, file in listfiles(library.directory .. "/configs") do
-		local name = file:gsub(library.directory .. "/configs\\", ""):gsub(".cfg", ""):gsub(library.directory .. "\\configs\\", "")
-		list[#list + 1] = name
+	library.config_paths = {}
+	for _, file in listfiles(library.directory .. "/configs") do
+		local base = file:match("[^/\\]+$") or file
+		local name = base:gsub("%.cfg$", "")
+		if name ~= "" then
+			library.config_paths[name] = file
+			list[#list + 1] = name
+		end
 	end
 	config_holder.refresh_options(list)
 end
@@ -498,6 +486,9 @@ function library:connection(signal, callback)
 end
 
 function library:close_element(new_path)
+	if library.catcher then
+		library.catcher.Visible = false
+	end
 	local open_element = library.current_open
 	if open_element and new_path ~= open_element then
 		open_element.set_visible(false)
@@ -517,8 +508,8 @@ function library:create(instance, options)
 end
 
 function library:unload_menu()
-	if library["gui"] then
-		library["gui"]:Destroy()
+	if library["items"] then
+		library["items"]:Destroy()
 	end
 	if library["other"] then
 		library["other"]:Destroy()
@@ -547,21 +538,12 @@ function library:window(properties)
 
 	local gui_parent = get_gui_parent()
 
-	library["gui"] = library:create("ScreenGui", {
+	library["items"] = library:create("ScreenGui", {
 		Parent = gui_parent,
 		Name = "\0",
 		Enabled = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Global,
 		IgnoreGuiInset = true,
-	})
-
-	library["items"] = library:create("Frame", {
-		Parent = library["gui"],
-		Name = "\0",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = dim2(0, 0, 0, 0),
-		Size = dim2(1, 0, 1, 0),
 	})
 
 	local scale_ok = pcall(function()
@@ -589,6 +571,29 @@ function library:window(properties)
 		BackgroundTransparency = 1,
 		Size = dim2(1, 0, 1, 0),
 	})
+
+	-- invisible full-screen catcher: tap outside an open colorpicker to close it
+	library["catcher"] = library:create("TextButton", {
+		Parent = library["items"],
+		Name = "\0",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = dim2(0, 0, 0, 0),
+		Size = dim2(1 / library.scale, 0, 1 / library.scale, 0),
+		ZIndex = 50,
+		Visible = false,
+	})
+
+	library["catcher"].MouseButton1Click:Connect(function()
+		library["catcher"].Visible = false
+		local open_element = library.current_open
+		if open_element and open_element.set_visible then
+			open_element.open = false
+			open_element.set_visible(false)
+		end
+	end)
 
 	local items = cfg.items
 	do
@@ -818,31 +823,23 @@ function library:window(properties)
 			IgnoreGuiInset = true,
 		})
 
-		library["toggle_root"] = library:create("Frame", {
-			Parent = library["toggle_gui"],
-			Name = "\0",
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Position = dim2(0, 0, 0, 0),
-			Size = dim2(1, 0, 1, 0),
-		})
-
 		pcall(function()
 			library:create("UIScale", {
-				Parent = library["toggle_root"],
+				Parent = library["toggle_gui"],
 				Scale = library.scale,
 			})
 		end)
 
+		local top = gui_service:GetGuiInset().Y
 		local menu_button = library:create("TextButton", {
 			FontFace = fonts.font,
 			TextColor3 = rgb(255, 255, 255),
 			BorderColor3 = rgb(0, 0, 0),
 			Text = "",
-			Parent = library["toggle_root"],
+			Parent = library["toggle_gui"],
 			AutoButtonColor = false,
 			Name = "\0",
-			Position = dim2(0, 10, 0, (gui_service:GetGuiInset().Y + 10) / library.scale),
+			Position = dim2(0, 10 / library.scale, 0, (top + 10) / library.scale),
 			Size = dim2(0, 96, 0, 35),
 			BorderSizePixel = 0,
 			TextSize = 16,
@@ -899,12 +896,12 @@ function library:window(properties)
 		})
 
 		menu_button.MouseButton1Click:Connect(function()
-			library["gui"].Enabled = not library["gui"].Enabled
+			library["items"].Enabled = not library["items"].Enabled
 		end)
 	end
 
 	function cfg.toggle_menu(bool)
-		library["gui"].Enabled = bool
+		library["items"].Enabled = bool
 	end
 
 	return setmetatable(cfg, library)
@@ -2278,7 +2275,7 @@ function library:dropdown(options)
 
 	function cfg.set_visible(bool)
 		local a = bool and cfg.y_size or 0
-		local width_local = items["dropdown"].AbsoluteSize.X / library.scale
+		local width_local = cfg.width
 		library:tween(items["dropdown_holder"], {Size = dim_offset(width_local, a)})
 
 		local position = library:to_local(items["dropdown"].AbsolutePosition) + vec2(0, 80)
@@ -2819,7 +2816,17 @@ function library:colorpicker(options)
 		})
 	end
 
+	-- keep the whole picker above the outside-tap catcher
+	items["colorpicker_holder"].ZIndex = 60
+	for _, descendant in items["colorpicker_holder"]:GetDescendants() do
+		descendant.ZIndex += 60
+	end
+
 	function cfg.set_visible(bool)
+		if library.catcher then
+			library.catcher.Visible = false
+		end
+
 		items["colorpicker_fade"].BackgroundTransparency = 0
 		items["colorpicker_holder"].Parent = bool and library["items"] or library["other"]
 
@@ -2832,6 +2839,10 @@ function library:colorpicker(options)
 
 		if not (self.sanity and library.current_open == self and self.open) then
 			library:close_element(cfg)
+		end
+
+		if bool and library.catcher then
+			library.catcher.Visible = true
 		end
 	end
 
@@ -3247,7 +3258,6 @@ function library:keybind(options)
 			CornerRadius = dim(0, 4)
 		})
 
-		local mode_options = {"Hold", "Toggle", "Always"}
 		cfg.y_size = 20
 
 		if is_mobile then
@@ -3284,7 +3294,7 @@ function library:keybind(options)
 			end)
 		end
 
-		for _, option in mode_options do
+		for _, option in {"Hold", "Toggle", "Always"} do
 			local name = library:create("TextButton", {
 				FontFace = fonts.font,
 				TextColor3 = rgb(72, 72, 73),
@@ -3750,7 +3760,7 @@ function library:init_config(window)
 	local column = main:column({})
 	local section = column:section({name = "Configs", size = 1, default = true, icon = "rbxassetid://139628202576511"})
 
-	config_holder = section:list({options = {"Report", "This", "Error", "To", "Finobe"}, callback = function(option) end, flag = "config_name_list"})
+	config_holder = section:list({options = {}, callback = function() end, flag = "config_name_list"})
 	library:update_config_list()
 
 	local column2 = main:column({})
@@ -3758,77 +3768,71 @@ function library:init_config(window)
 
 	section2:textbox({name = "Config name:", flag = "config_name_text"})
 
-	local function get_save_name()
-		local name = flags["config_name_text"]
-		if not name or name == "" then
-			name = flags["config_name_list"]
+	local function selected_name()
+		local n = flags["config_name_list"]
+		if not n or n == "" then
+			n = flags["config_name_text"]
 		end
-		return name
+		return n
 	end
 
-	local function get_list_name()
-		return flags["config_name_list"]
-	end
-
-	section2:button({
-		name = "Save",
-		callback = function()
-			if not filesystem_supported then
-				notifications:create_notification({name = "Configs", info = "File system unsupported"})
-				return
-			end
-			local config_name = get_save_name()
-			if not config_name or config_name == "" then
-				notifications:create_notification({name = "Configs", info = "No config name selected"})
-				return
-			end
-			pcall(function()
-				writefile(library.directory .. "/configs/" .. config_name .. ".cfg", library:get_config())
-				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. config_name})
-			end)
+	section2:button({name = "Save", callback = function()
+		if not filesystem_supported then
+			notifications:create_notification({name = "Configs", info = "File system unsupported"})
+			return
 		end
-	})
-
-	section2:button({
-		name = "Load",
-		callback = function()
-			if not filesystem_supported then
-				notifications:create_notification({name = "Configs", info = "File system unsupported"})
-				return
-			end
-			local config_name = get_list_name()
-			if not config_name or config_name == "" then
-				notifications:create_notification({name = "Configs", info = "No config selected"})
-				return
-			end
-			pcall(function()
-				library:load_config(readfile(library.directory .. "/configs/" .. config_name .. ".cfg"))
-				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. config_name})
-			end)
+		local n = flags["config_name_text"]
+		if not n or n == "" then
+			n = flags["config_name_list"]
 		end
-	})
-
-	section2:button({
-		name = "Delete",
-		callback = function()
-			if not filesystem_supported then
-				notifications:create_notification({name = "Configs", info = "File system unsupported"})
-				return
-			end
-			local config_name = get_list_name()
-			if not config_name or config_name == "" then
-				notifications:create_notification({name = "Configs", info = "No config selected"})
-				return
-			end
-			pcall(function()
-				delfile(library.directory .. "/configs/" .. config_name .. ".cfg")
-				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. config_name})
-			end)
+		if not n or n == "" then
+			notifications:create_notification({name = "Configs", info = "No config name"})
+			return
 		end
-	})
+		local ok = pcall(function()
+			writefile(library.directory .. "/configs/" .. n .. ".cfg", library:get_config())
+		end)
+		library:update_config_list()
+		notifications:create_notification({name = "Configs", info = (ok and "Saved config:\n" or "Save failed:\n") .. n})
+	end})
+
+	section2:button({name = "Load", callback = function()
+		if not filesystem_supported then
+			notifications:create_notification({name = "Configs", info = "File system unsupported"})
+			return
+		end
+		local n = selected_name()
+		if not n or n == "" then
+			notifications:create_notification({name = "Configs", info = "No config selected"})
+			return
+		end
+		local path = library.config_paths[n] or (library.directory .. "/configs/" .. n .. ".cfg")
+		local ok = pcall(function()
+			library:load_config(readfile(path))
+		end)
+		notifications:create_notification({name = "Configs", info = (ok and "Loaded config:\n" or "Load failed:\n") .. n})
+	end})
+
+	section2:button({name = "Delete", callback = function()
+		if not filesystem_supported then
+			notifications:create_notification({name = "Configs", info = "File system unsupported"})
+			return
+		end
+		local n = selected_name()
+		if not n or n == "" then
+			notifications:create_notification({name = "Configs", info = "No config selected"})
+			return
+		end
+		local path = library.config_paths[n] or (library.directory .. "/configs/" .. n .. ".cfg")
+		local ok = pcall(function()
+			delfile(path)
+		end)
+		if ok then
+			flags["config_name_list"] = nil
+		end
+		library:update_config_list()
+		notifications:create_notification({name = "Configs", info = (ok and "Deleted config:\n" or "Delete failed:\n") .. n})
+	end})
 
 	section2:colorpicker({name = "Menu Accent", callback = function(color, alpha) library:update_theme("accent", color) end, color = themes.preset.accent})
 	section2:keybind({name = "Menu Bind", callback = function(bool) window.toggle_menu(bool) end, default = true})
