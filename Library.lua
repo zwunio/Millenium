@@ -1,8 +1,8 @@
 --[[
 Milenium Library
 -> Made by @finobe
--> Mobile + PC fork: window uniformly scaled, popups unscaled (original math), lib-styled mobile Menu button
--> fixes: config delete/load, colorpicker outside-tap close + palette math, dropdown width/text
+-> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
+-> fixes: config delete/load, colorpicker outside-tap close + unscaled palette, dropdown width
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -43,7 +43,7 @@ local concat = table.concat
 
 local is_mobile = uis.TouchEnabled and not uis.KeyboardEnabled
 
--- Uniform scale for the window only; popups stay unscaled
+-- Uniform scale: desktop metrics always, whole UI scaled proportionally on small screens
 local BASE_W, BASE_H = 700, 565
 local startup_vp = camera.ViewportSize
 local ui_scale = math.min(1, (startup_vp.X - 12) / BASE_W, (startup_vp.Y - 12) / BASE_H)
@@ -522,9 +522,6 @@ function library:unload_menu()
 	if library["other"] then
 		library["other"]:Destroy()
 	end
-	if library["popup_gui"] then
-		library["popup_gui"]:Destroy()
-	end
 	if library["toggle_gui"] then
 		library["toggle_gui"]:Destroy()
 	end
@@ -575,15 +572,6 @@ function library:window(properties)
 		IgnoreGuiInset = true,
 	})
 
-	-- unscaled popup layer: colorpicker, dropdowns, keybind modes, settings, catcher
-	library["popup_gui"] = library:create("ScreenGui", {
-		Parent = gui_parent,
-		Name = "\0",
-		Enabled = true,
-		ZIndexBehavior = Enum.ZIndexBehavior.Global,
-		IgnoreGuiInset = true,
-	})
-
 	library["cache"] = library:create("Frame", {
 		Parent = library["items"],
 		Name = "\0",
@@ -592,15 +580,16 @@ function library:window(properties)
 		Size = dim2(1, 0, 1, 0),
 	})
 
+	-- invisible full-screen catcher: tap outside an open colorpicker to close it
 	library["catcher"] = library:create("TextButton", {
-		Parent = library["popup_gui"],
+		Parent = library["items"],
 		Name = "\0",
 		Text = "",
 		AutoButtonColor = false,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = dim2(0, 0, 0, 0),
-		Size = dim2(1, 0, 1, 0),
+		Size = dim2(1 / library.scale, 0, 1 / library.scale, 0),
 		ZIndex = 50,
 		Visible = false,
 	})
@@ -2073,7 +2062,7 @@ function library:dropdown(options)
 		callback = options.callback or function() end,
 		multi = options.multi or false,
 		scrolling = options.scrolling or false,
-		width = options.width or 130,
+		width = options.width or (is_mobile and 110 or 130),
 		open = false,
 		option_instances = {},
 		multi_items = {},
@@ -2224,7 +2213,7 @@ function library:dropdown(options)
 
 		items["dropdown_holder"] = library:create("Frame", {
 			BorderColor3 = rgb(0, 0, 0),
-			Parent = library["popup_gui"],
+			Parent = library["items"],
 			Name = "\0",
 			Visible = true,
 			BackgroundTransparency = 1,
@@ -2294,11 +2283,11 @@ function library:dropdown(options)
 
 	function cfg.set_visible(bool)
 		local a = bool and cfg.y_size or 0
-		local width = math.max(items["dropdown"].AbsoluteSize.X, cfg.width)
-		library:tween(items["dropdown_holder"], {Size = dim_offset(width, a)})
+		local width_local = cfg.width
+		library:tween(items["dropdown_holder"], {Size = dim_offset(width_local, a)})
 
-		local position = vec2(items["dropdown"].AbsolutePosition.X, items["dropdown"].AbsolutePosition.Y + 80)
-		local clamped = library:clamp_screen(position, vec2(width, a))
+		local position = library:to_local(items["dropdown"].AbsolutePosition) + vec2(0, 80)
+		local clamped = library:clamp_local(position, vec2(width_local, a))
 		items["dropdown_holder"].Position = dim_offset(clamped.X, clamped.Y)
 
 		if not (self.sanity and library.current_open == self) then
@@ -2334,7 +2323,7 @@ function library:dropdown(options)
 
 		for _, option in list do
 			local button = cfg.render_option(option)
-			cfg.y_size += button.AbsoluteSize.Y + 6
+			cfg.y_size += button.AbsoluteSize.Y / library.scale + 6
 			insert(cfg.option_instances, button)
 
 			button.MouseButton1Down:Connect(function()
@@ -2561,6 +2550,14 @@ function library:colorpicker(options)
 			Visible = true,
 			BackgroundColor3 = rgb(25, 25, 29)
 		})
+
+		-- counter-scale: picker renders at full desktop size inside the scaled menu
+		pcall(function()
+			library:create("UIScale", {
+				Parent = items["colorpicker_holder"],
+				Scale = 1 / library.scale,
+			})
+		end)
 
 		items["colorpicker_fade"] = library:create("Frame", {
 			Parent = items["colorpicker_holder"],
@@ -2849,11 +2846,11 @@ function library:colorpicker(options)
 		end
 
 		items["colorpicker_fade"].BackgroundTransparency = 0
-		items["colorpicker_holder"].Parent = bool and library["popup_gui"] or library["other"]
+		items["colorpicker_holder"].Parent = bool and library["items"] or library["other"]
 
-		local position = vec2(items["colorpicker"].AbsolutePosition.X, items["colorpicker"].AbsolutePosition.Y + items["colorpicker"].AbsoluteSize.Y + 45)
-		local clamped = library:clamp_screen(position, vec2(166, 197))
-		items["colorpicker_holder"].Position = dim_offset(clamped.X, clamped.Y)
+		local screen_pos = vec2(items["colorpicker"].AbsolutePosition.X, items["colorpicker"].AbsolutePosition.Y + items["colorpicker"].AbsoluteSize.Y + 45)
+		local clamped = library:clamp_screen(screen_pos, vec2(166, 197))
+		items["colorpicker_holder"].Position = dim_offset(clamped.X / library.scale, clamped.Y / library.scale)
 
 		library:tween(items["colorpicker_fade"], {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, 0.4)
 
@@ -3240,7 +3237,7 @@ function library:keybind(options)
 
 		items["dropdown"] = library:create("Frame", {
 			BorderColor3 = rgb(0, 0, 0),
-			Parent = library.popup_gui,
+			Parent = library.items,
 			Name = "\0",
 			BackgroundTransparency = 1,
 			Position = dim2(0, 0, 0, 0),
@@ -3298,7 +3295,7 @@ function library:keybind(options)
 			})
 			library:apply_theme(bind_button, "accent", "TextColor3")
 
-			cfg.y_size += bind_button.AbsoluteSize.Y
+			cfg.y_size += bind_button.AbsoluteSize.Y / library.scale
 
 			library:create("UIPadding", {
 				Parent = bind_button,
@@ -3333,7 +3330,7 @@ function library:keybind(options)
 			cfg.hold_instances[option] = name
 			library:apply_theme(name, "accent", "TextColor3")
 
-			cfg.y_size += name.AbsoluteSize.Y
+			cfg.y_size += name.AbsoluteSize.Y / library.scale
 
 			library:create("UIPadding", {
 				Parent = name,
@@ -3411,11 +3408,12 @@ function library:keybind(options)
 
 	function cfg.set_visible(bool)
 		local size = bool and cfg.y_size or 0
-		local width = math.max(items["keybind_holder"].AbsoluteSize.X, 70)
-		library:tween(items["dropdown"], {Size = dim_offset(width, size)})
+		local width_local = items["keybind_holder"].AbsoluteSize.X / library.scale
+		library:tween(items["dropdown"], {Size = dim_offset(width_local, size)})
 
-		local position = vec2(items["keybind_holder"].AbsolutePosition.X, items["keybind_holder"].AbsolutePosition.Y + items["keybind_holder"].AbsoluteSize.Y + 60)
-		local clamped = library:clamp_screen(position, vec2(width, size))
+		local position = library:to_local(items["keybind_holder"].AbsolutePosition)
+			+ vec2(0, items["keybind_holder"].AbsoluteSize.Y / library.scale + 60)
+		local clamped = library:clamp_local(position, vec2(width_local, size))
 		items["dropdown"].Position = dim_offset(clamped.X, clamped.Y)
 	end
 
@@ -3576,7 +3574,7 @@ function library:settings(options)
 		items["outline"] = library:create("Frame", {
 			Name = "\0",
 			Visible = true,
-			Parent = library["popup_gui"],
+			Parent = library["items"],
 			BorderColor3 = rgb(0, 0, 0),
 			Size = dim2(0, 0, 0, 0),
 			ClipsDescendants = true,
@@ -3643,8 +3641,8 @@ function library:settings(options)
 	function cfg.set_visible(bool)
 		library:tween(items["outline"], {Size = dim_offset(bool and 240 or 0, 0)})
 
-		local position = vec2(items["tick"].AbsolutePosition.X, items["tick"].AbsolutePosition.Y + 90)
-		local clamped = library:clamp_screen(position, vec2(240, items["outline"].AbsoluteSize.Y))
+		local position = library:to_local(items["tick"].AbsolutePosition) + vec2(0, 90)
+		local clamped = library:clamp_local(position, vec2(240, items["outline"].AbsoluteSize.Y / library.scale))
 		items["outline"].Position = dim_offset(clamped.X, clamped.Y)
 
 		library:close_element(cfg)
