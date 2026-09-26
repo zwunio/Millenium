@@ -1,7 +1,7 @@
 --[[
 Milenium Library
 -> Made by @finobe
--> Mobile + PC fork (uniform UIScale rendering, no dwarfed components)
+-> Mobile + PC fork (rebuilt on original source, uniform UIScale, mobile menu button)
 ]]
 
 -- Variables
@@ -63,16 +63,14 @@ local concat = table.concat
 
 local is_mobile = uis.TouchEnabled and not uis.KeyboardEnabled
 
--- Uniform scale: desktop metrics always, scaled down proportionally when needed
+-- Uniform scale (desktop metrics always, scaled proportionally when needed)
 local BASE_W, BASE_H = 700, 565
-local startup_viewport = camera.ViewportSize
-local ui_scale = math.min(1, (startup_viewport.X - 12) / BASE_W, (startup_viewport.Y - 12) / BASE_H)
+local startup_vp = camera.ViewportSize
+local ui_scale = math.min(1, (startup_vp.X - 12) / BASE_W, (startup_vp.Y - 12) / BASE_H)
 ui_scale = math.max(0.45, ui_scale)
 
 local function create_fallback_font()
-	local ok, result = pcall(function()
-		return Font.new("rbxasset://fonts/families/Gotham.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal)
-	end)
+	local ok, result = pcall(function() return Font.new("rbxasset://fonts/families/Gotham.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal) end)
 	if ok then return result end
 	ok, result = pcall(function() return Font.fromEnum(Enum.Font.Gotham) end)
 	if ok then return result end
@@ -117,7 +115,6 @@ getgenv().library = {
 	is_mobile = is_mobile,
 	scale = ui_scale,
 	cache = nil,
-	layer = nil,
 }
 
 local themes = {
@@ -206,7 +203,7 @@ do
 	end
 end
 
--- Library functions
+-- Misc functions
 function library:tween(obj, properties, easing_style, time)
 	local tween = tween_service:Create(obj, TweenInfo.new(time or 0.25, easing_style or Enum.EasingStyle.Quint, Enum.EasingDirection.InOut, 0, false, 0), properties):Play()
 	return tween
@@ -220,25 +217,19 @@ function library:is_move(input)
 	return input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch
 end
 
-function library:get_pointer_position()
-	local touches = uis:GetTouches()
-	if #touches > 0 then
-		local position = touches[1].Position
-		return vec2(position.X, position.Y - gui_offset)
-	end
-	return vec2(mouse.X, mouse.Y)
+function library:local_viewport()
+	return vec2(camera.ViewportSize.X / library.scale, camera.ViewportSize.Y / library.scale)
 end
 
--- screen (post-scale) -> popup layer local (desktop units)
-function library:screen_to_local(v)
-	return vec2(v.X / library.scale, v.Y / library.scale)
+function library:to_local(screen_vec)
+	return vec2(screen_vec.X / library.scale, screen_vec.Y / library.scale)
 end
 
-function library:clamp_local(local_pos, local_size)
-	local vp = vec2(camera.ViewportSize.X / library.scale, camera.ViewportSize.Y / library.scale)
+function library:clamp_local(pos, size)
+	local vp = library:local_viewport()
 	return vec2(
-		clamp(local_pos.X, 0, math.max(0, vp.X - local_size.X)),
-		clamp(local_pos.Y, 0, math.max(0, vp.Y - local_size.Y))
+		clamp(pos.X, 0, math.max(0, vp.X - size.X)),
+		clamp(pos.Y, 0, math.max(0, vp.Y - size.Y))
 	)
 end
 
@@ -273,16 +264,13 @@ function library:resizify(frame)
 
 	library:connection(uis.InputChanged, function(input, game_event)
 		if resizing and library:is_move(input) then
-			local vp = camera.ViewportSize
-			local max_local_x = vp.X / library.scale
-			local max_local_y = vp.Y / library.scale
-			local dx = (input.Position.X - start.X) / library.scale
-			local dy = (input.Position.Y - start.Y) / library.scale
+			local vp = library:local_viewport()
+			local delta = library:to_local(vec2(input.Position.X - start.X, input.Position.Y - start.Y))
 			local current_size = dim2(
 				start_size.X.Scale,
-				math.clamp(start_size.X.Offset + dx, og_size.X.Offset, max_local_x),
+				math.clamp(start_size.X.Offset + delta.X, og_size.X.Offset, vp.X),
 				start_size.Y.Scale,
-				math.clamp(start_size.Y.Offset + dy, og_size.Y.Offset, max_local_y)
+				math.clamp(start_size.Y.Offset + delta.Y, og_size.Y.Offset, vp.Y)
 			)
 			library:tween(frame, {Size = current_size}, Enum.EasingStyle.Linear, 0.05)
 		end
@@ -301,22 +289,21 @@ function library:next_flag()
 end
 
 function library:mouse_in_frame(uiobject)
-	local position = library:get_pointer_position()
-	local y_cond = uiobject.AbsolutePosition.Y <= position.Y and position.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
-	local x_cond = uiobject.AbsolutePosition.X <= position.X and position.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
-	return y_cond and x_cond
+	local y_cond = uiobject.AbsolutePosition.Y <= mouse.Y and mouse.Y <= uiobject.AbsolutePosition.Y + uiobject.AbsoluteSize.Y
+	local x_cond = uiobject.AbsolutePosition.X <= mouse.X and mouse.X <= uiobject.AbsolutePosition.X + uiobject.AbsoluteSize.X
+	return (y_cond and x_cond)
 end
 
 function library:draggify(frame)
 	local dragging = false
-	local start_size = frame.Position
+	local start_pos = frame.Position
 	local start
 
 	frame.InputBegan:Connect(function(input)
 		if library:is_press(input) then
 			dragging = true
 			start = input.Position
-			start_size = frame.Position
+			start_pos = frame.Position
 		end
 	end)
 
@@ -326,13 +313,13 @@ function library:draggify(frame)
 
 	library:connection(uis.InputChanged, function(input, game_event)
 		if dragging and library:is_move(input) then
-			local viewport_x = camera.ViewportSize.X
-			local viewport_y = camera.ViewportSize.Y
+			local vp = library:local_viewport()
+			local delta = library:to_local(vec2(input.Position.X - start.X, input.Position.Y - start.Y))
 			local current_position = dim2(
 				0,
-				clamp(start_size.X.Offset + (input.Position.X - start.X), 0, viewport_x - frame.AbsoluteSize.X),
+				clamp(start_pos.X.Offset + delta.X, 0, math.max(0, vp.X - frame.Size.X.Offset)),
 				0,
-				math.clamp(start_size.Y.Offset + (input.Position.Y - start.Y), 0, viewport_y - frame.AbsoluteSize.Y)
+				clamp(start_pos.Y.Offset + delta.Y, 0, math.max(0, vp.Y - frame.Size.Y.Offset))
 			)
 			library:tween(frame, {Position = current_position}, Enum.EasingStyle.Linear, 0.05)
 			library:close_element()
@@ -351,8 +338,7 @@ function library:convert_enum(enum)
 	for part in string.gmatch(enum, "[%w_]+") do insert(enum_parts, part) end
 	local enum_table = Enum
 	for i = 2, #enum_parts do
-		local enum_item = enum_table[enum_parts[i]]
-		enum_table = enum_item
+		enum_table = enum_table[enum_parts[i]]
 	end
 	return enum_table
 end
@@ -447,6 +433,7 @@ end
 function library:unload_menu()
 	if library["items"] then library["items"]:Destroy() end
 	if library["other"] then library["other"]:Destroy() end
+	if library["toggle_gui"] then library["toggle_gui"]:Destroy() end
 	for index, connection in library.connections do
 		connection:Disconnect()
 		connection = nil
@@ -472,35 +459,32 @@ function library:window(properties)
 		Parent = gui_parent, Name = "\0", Enabled = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Global, IgnoreGuiInset = true,
 	})
+	library:create("UIScale", {Parent = library["items"], Scale = library.scale})
 
 	library["other"] = library:create("ScreenGui", {
 		Parent = gui_parent, Name = "\0", Enabled = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true,
 	})
 
-	-- popup layer: everything floating lives here, scaled by the same factor
-	library["layer"] = library:create("Frame", {
-		Parent = library["items"], Name = "\0",
-		BackgroundTransparency = 1, Size = dim2(1, 0, 1, 0), Position = dim2(0, 0, 0, 0),
+	library["cache"] = library:create("Frame", {
+		Parent = library["items"], Name = "\0", Visible = false,
+		BackgroundTransparency = 1, Size = dim2(1, 0, 1, 0),
 	})
-	library:create("UIScale", {Parent = library["layer"], Scale = library.scale})
 
 	local items = cfg.items
 	do
+		local vp = camera.ViewportSize
+		local top = is_mobile and gui_service:GetGuiInset().Y or 0
+		local w = cfg.size.X.Offset
+		local h = cfg.size.Y.Offset
+		local off_x = math.max(4, (vp.X - w * library.scale) / 2) / library.scale
+		local off_y = math.max(4, top + (vp.Y - top - h * library.scale) / 2) / library.scale
+
 		items["main"] = library:create("Frame", {
 			Parent = library["items"], Size = cfg.size, Name = "\0",
+			Position = dim2(0, off_x, 0, off_y),
 			BorderColor3 = rgb(0, 0, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(14, 14, 16)
 		})
-		library:create("UIScale", {Parent = items["main"], Scale = library.scale})
-
-		-- center using rendered (scaled) size
-		local rendered_w = cfg.size.X.Offset * library.scale
-		local rendered_h = cfg.size.Y.Offset * library.scale
-		local top = is_mobile and gui_service:GetGuiInset().Y or 0
-		local avail_h = camera.ViewportSize.Y - top
-		local pos_x = math.max(4, (camera.ViewportSize.X - rendered_w) / 2)
-		local pos_y = math.max(4, top + (avail_h - rendered_h) / 2)
-		items["main"].Position = dim2(0, pos_x, 0, pos_y)
 
 		library:create("UICorner", {Parent = items["main"], CornerRadius = dim(0, 10)})
 		library:create("UIStroke", {Color = rgb(23, 23, 29), Parent = items["main"], ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
@@ -576,15 +560,45 @@ function library:window(properties)
 			FontFace = fonts.font, TextSize = 14, BackgroundColor3 = rgb(255, 255, 255)
 		})
 		library:apply_theme(items["other_info"], "accent", "TextColor3")
-
-		library["cache"] = library:create("Frame", {
-			Parent = library["items"], Name = "\0", Visible = false, BackgroundTransparency = 1, Size = dim2(1, 0, 1, 0),
-		})
 	end
 
 	do
 		library:draggify(items["main"])
 		library:resizify(items["main"])
+	end
+
+	-- Mobile menu button (show / hide UI)
+	if is_mobile then
+		library["toggle_gui"] = library:create("ScreenGui", {
+			Parent = gui_parent, Name = "\0", Enabled = true,
+			ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true,
+		})
+		library:create("UIScale", {Parent = library["toggle_gui"], Scale = library.scale})
+
+		local top = gui_service:GetGuiInset().Y
+		local menu_btn = library:create("TextButton", {
+			Parent = library["toggle_gui"], Name = "\0", Text = "", AutoButtonColor = false,
+			Position = dim2(0, 10 / library.scale, 0, (top + 10) / library.scale),
+			Size = dim2(0, 44, 0, 44),
+			BackgroundColor3 = rgb(22, 22, 24), BorderColor3 = rgb(0, 0, 0), BorderSizePixel = 0,
+		})
+		library:create("UICorner", {Parent = menu_btn, CornerRadius = dim(0, 7)})
+		library:create("UIStroke", {Color = rgb(36, 36, 37), Parent = menu_btn, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
+
+		for i = 1, 3 do
+			local bar = library:create("Frame", {
+				Parent = menu_btn, Name = "\0",
+				Position = dim2(0, 11, 0, 13 + (i - 1) * 8),
+				Size = dim2(1, -22, 0, 2),
+				BackgroundColor3 = themes.preset.accent, BorderColor3 = rgb(0, 0, 0), BorderSizePixel = 0,
+			})
+			library:create("UICorner", {Parent = bar, CornerRadius = dim(0, 999)})
+			library:apply_theme(bar, "accent", "BackgroundColor3")
+		end
+
+		menu_btn.MouseButton1Click:Connect(function()
+			library["items"].Enabled = not library["items"].Enabled
+		end)
 	end
 
 	function cfg.toggle_menu(bool)
@@ -1158,7 +1172,7 @@ function library:dropdown(options)
 		})
 
 		items["dropdown_holder"] = library:create("Frame", {
-			BorderColor3 = rgb(0, 0, 0), Parent = library["layer"], Name = "\0", Visible = true, BackgroundTransparency = 1,
+			BorderColor3 = rgb(0, 0, 0), Parent = library["items"], Name = "\0", Visible = true, BackgroundTransparency = 1,
 			Size = dim2(0, 0, 0, 0), BorderSizePixel = 0, BackgroundColor3 = rgb(0, 0, 0), ZIndex = 10,
 		})
 		items["outline"] = library:create("Frame", {
@@ -1185,8 +1199,8 @@ function library:dropdown(options)
 		local a = bool and cfg.y_size or 0
 		local width_local = items["dropdown"].AbsoluteSize.X / library.scale
 		library:tween(items["dropdown_holder"], {Size = dim_offset(width_local, a)})
-		local local_pos = library:screen_to_local(items["dropdown"].AbsolutePosition) + vec2(0, 80)
-		local clamped = library:clamp_local(local_pos, vec2(width_local, a))
+		local pos = library:to_local(items["dropdown"].AbsolutePosition) + vec2(0, 80)
+		local clamped = library:clamp_local(pos, vec2(width_local, a))
 		items["dropdown_holder"].Position = dim_offset(clamped.X, clamped.Y)
 		if not (self.sanity and library.current_open == self) then
 			library:close_element(cfg)
@@ -1331,7 +1345,7 @@ function library:colorpicker(options)
 
 		items["colorpicker_holder"] = library:create("Frame", {
 			Parent = library["other"], Name = "\0", Position = dim2(0.2, 20, 0.297, 0), BorderColor3 = rgb(0, 0, 0),
-			Size = dim2(0, 166, 0, 197), BorderSizePixel = 0, Visible = true, BackgroundColor3 = rgb(25, 25, 29), ZIndex = 20,
+			Size = dim2(0, 166, 0, 197), BorderSizePixel = 0, Visible = true, BackgroundColor3 = rgb(25, 25, 29)
 		})
 		items["colorpicker_fade"] = library:create("Frame", {
 			Parent = items["colorpicker_holder"], Name = "\0", BackgroundTransparency = 0, Position = dim2(0, 0, 0, 0),
@@ -1407,10 +1421,10 @@ function library:colorpicker(options)
 
 	function cfg.set_visible(bool)
 		items["colorpicker_fade"].BackgroundTransparency = 0
-		items["colorpicker_holder"].Parent = bool and library["layer"] or library["other"]
-		local local_pos = library:screen_to_local(items["colorpicker"].AbsolutePosition)
+		items["colorpicker_holder"].Parent = bool and library["items"] or library["other"]
+		local pos = library:to_local(items["colorpicker"].AbsolutePosition)
 			+ vec2(0, items["colorpicker"].AbsoluteSize.Y / library.scale + 45)
-		local clamped = library:clamp_local(local_pos, vec2(166, 197))
+		local clamped = library:clamp_local(pos, vec2(166, 197))
 		items["colorpicker_holder"].Position = dim_offset(clamped.X, clamped.Y)
 		library:tween(items["colorpicker_fade"], {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, 0.4)
 		if not (self.sanity and library.current_open == self and self.open) then
@@ -1441,12 +1455,8 @@ function library:colorpicker(options)
 	end
 
 	function cfg.update_color(input)
-		local offset
-		if input and input.Position then
-			offset = vec2(input.Position.X, input.Position.Y - gui_offset)
-		else
-			offset = library:get_pointer_position()
-		end
+		local screen = (input and input.Position) or uis:GetMouseLocation()
+		local offset = vec2(screen.X, screen.Y - gui_offset)
 		if dragging_sat then
 			s = math.clamp((offset - items["sat"].AbsolutePosition).X / items["sat"].AbsoluteSize.X, 0, 1)
 			v = 1 - math.clamp((offset - items["sat"].AbsolutePosition).Y / items["sat"].AbsoluteSize.Y, 0, 1)
@@ -1464,13 +1474,19 @@ function library:colorpicker(options)
 	end)
 
 	library:connection(uis.InputChanged, function(input)
-		if (dragging_sat or dragging_hue or dragging_alpha) and library:is_move(input) then cfg.update_color(input) end
-	end)
-	library:connection(uis.InputEnded, function(input)
-		if library:is_press(input) then
-			dragging_sat = false; dragging_hue = false; dragging_alpha = false
+		if (dragging_sat or dragging_hue or dragging_alpha) and library:is_move(input) then
+			cfg.update_color(input)
 		end
 	end)
+
+	library:connection(uis.InputEnded, function(input)
+		if library:is_press(input) then
+			dragging_sat = false
+			dragging_hue = false
+			dragging_alpha = false
+		end
+	end)
+
 	items["alpha_gradient"].InputBegan:Connect(function(input)
 		if library:is_press(input) then dragging_alpha = true; cfg.update_color(input) end
 	end)
@@ -1480,6 +1496,7 @@ function library:colorpicker(options)
 	items["sat"].InputBegan:Connect(function(input)
 		if library:is_press(input) then dragging_sat = true; cfg.update_color(input) end
 	end)
+
 	items["input"].FocusLost:Connect(function()
 		local r, g, b, alpha = library:convert(items["input"].Text)
 		if r and g and b and alpha then cfg.set(rgb(r, g, b), 1 - alpha) end
@@ -1591,8 +1608,8 @@ function library:keybind(options)
 		library:create("UIPadding", {Parent = items["key"], PaddingTop = dim(0, 1), PaddingRight = dim(0, 5), PaddingLeft = dim(0, 5)})
 
 		items["dropdown"] = library:create("Frame", {
-			BorderColor3 = rgb(0, 0, 0), Parent = library.layer, Name = "\0", BackgroundTransparency = 1,
-			Position = dim2(0, 0, 0, 0), Size = dim2(0, 0, 0, 0), BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = rgb(0, 0, 0), ZIndex = 20,
+			BorderColor3 = rgb(0, 0, 0), Parent = library.items, Name = "\0", BackgroundTransparency = 1,
+			Position = dim2(0, 0, 0, 0), Size = dim2(0, 0, 0, 0), BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = rgb(0, 0, 0)
 		})
 		items["inline"] = library:create("Frame", {
 			Parent = items["dropdown"], Size = dim2(1, 0, 1, 0), Name = "\0", ClipsDescendants = true,
@@ -1602,7 +1619,6 @@ function library:keybind(options)
 		library:create("UIListLayout", {Parent = items["inline"], Padding = dim(0, 5), SortOrder = Enum.SortOrder.LayoutOrder})
 		library:create("UICorner", {Parent = items["inline"], CornerRadius = dim(0, 4)})
 
-		local mode_options = {"Hold", "Toggle", "Always"}
 		cfg.y_size = 20
 
 		if is_mobile then
@@ -1611,6 +1627,7 @@ function library:keybind(options)
 				Parent = items["inline"], Name = "\0", Size = dim2(0, 0, 0, 0), BackgroundTransparency = 1,
 				TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.XY, TextSize = 14, BackgroundColor3 = rgb(255, 255, 255)
 			})
+			library:apply_theme(bind_button, "accent", "TextColor3")
 			cfg.y_size += bind_button.AbsoluteSize.Y / library.scale
 			library:create("UIPadding", {Parent = bind_button, PaddingTop = dim(0, 1), PaddingRight = dim(0, 5), PaddingLeft = dim(0, 5)})
 			bind_button.MouseButton1Click:Connect(function()
@@ -1620,6 +1637,7 @@ function library:keybind(options)
 			end)
 		end
 
+		local mode_options = {"Hold", "Toggle", "Always"}
 		for _, option in mode_options do
 			local name = library:create("TextButton", {
 				FontFace = fonts.font, TextColor3 = rgb(72, 72, 73), BorderColor3 = rgb(0, 0, 0), Text = option, Parent = items["inline"],
@@ -1682,28 +1700,22 @@ function library:keybind(options)
 		local size = bool and cfg.y_size or 0
 		local width_local = items["keybind_holder"].AbsoluteSize.X / library.scale
 		library:tween(items["dropdown"], {Size = dim_offset(width_local, size)})
-		local local_pos = library:screen_to_local(items["keybind_holder"].AbsolutePosition)
+		local pos = library:to_local(items["keybind_holder"].AbsolutePosition)
 			+ vec2(0, items["keybind_holder"].AbsoluteSize.Y / library.scale + 60)
-		local clamped = library:clamp_local(local_pos, vec2(width_local, size))
+		local clamped = library:clamp_local(pos, vec2(width_local, size))
 		items["dropdown"].Position = dim_offset(clamped.X, clamped.Y)
 	end
 
 	function cfg.start_binding()
 		task.wait()
 		items["key"].Text = "..."
-		cfg.binding = library:connection(uis.InputBegan, function(input, game_event)
+		cfg.binding = library:connection(uis.InputBegan, function(keycode, game_event)
 			if game_event then return end
-			local selected
-			if input.UserInputType == Enum.UserInputType.Keyboard then
-				selected = input.KeyCode
-			elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
-				selected = input.UserInputType
-			elseif is_mobile and input.UserInputType == Enum.UserInputType.Touch then
-				selected = "NONE"
+			if is_mobile and keycode.UserInputType == Enum.UserInputType.Touch then
+				cfg.set("NONE")
 			else
-				return
+				cfg.set(keycode.KeyCode ~= Enum.KeyCode.Unknown and keycode.KeyCode or keycode.UserInputType)
 			end
-			cfg.set(selected)
 			if cfg.binding then
 				cfg.binding:Disconnect()
 				cfg.binding = nil
@@ -1737,6 +1749,7 @@ function library:keybind(options)
 			end
 		end
 	end)
+
 	library:connection(uis.InputEnded, function(input, game_event)
 		if game_event then return end
 		local selected_key = input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType
@@ -1785,8 +1798,8 @@ function library:settings(options)
 	local items = cfg.items
 	do
 		items["outline"] = library:create("Frame", {
-			Name = "\0", Visible = true, Parent = library["layer"], BorderColor3 = rgb(0, 0, 0), Size = dim2(0, 0, 0, 0),
-			ClipsDescendants = true, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = rgb(25, 25, 29), ZIndex = 20,
+			Name = "\0", Visible = true, Parent = library["items"], BorderColor3 = rgb(0, 0, 0), Size = dim2(0, 0, 0, 0),
+			ClipsDescendants = true, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = rgb(25, 25, 29)
 		})
 		items["inline"] = library:create("Frame", {
 			Parent = items["outline"], Name = "\0", Position = dim2(0, 1, 0, 1), BorderColor3 = rgb(0, 0, 0),
@@ -1808,8 +1821,8 @@ function library:settings(options)
 
 	function cfg.set_visible(bool)
 		library:tween(items["outline"], {Size = dim_offset(bool and 240 or 0, 0)})
-		local local_pos = library:screen_to_local(items["tick"].AbsolutePosition) + vec2(0, 90)
-		local clamped = library:clamp_local(local_pos, vec2(240, items["outline"].AbsoluteSize.Y / library.scale))
+		local pos = library:to_local(items["tick"].AbsolutePosition) + vec2(0, 90)
+		local clamped = library:clamp_local(pos, vec2(240, items["outline"].AbsoluteSize.Y / library.scale))
 		items["outline"].Position = dim_offset(clamped.X, clamped.Y)
 		library:close_element(cfg)
 	end
@@ -1890,6 +1903,16 @@ function library:init_config(window)
 	local section2 = column2:section({name = "Settings", side = "right", size = 1, default = true, icon = "rbxassetid://129380150574313"})
 	section2:textbox({name = "Config name:", flag = "config_name_text"})
 
+	local function get_save_name()
+		local name = flags["config_name_text"]
+		if not name or name == "" then name = flags["config_name_list"] end
+		return name
+	end
+
+	local function get_list_name()
+		return flags["config_name_list"]
+	end
+
 	section2:button({
 		name = "Save",
 		callback = function()
@@ -1897,18 +1920,19 @@ function library:init_config(window)
 				notifications:create_notification({name = "Configs", info = "File system unsupported"})
 				return
 			end
-			local config_name = flags["config_name_text"] or flags["config_name_list"]
-			if not config_name or config_name == "" then
+			local name = get_save_name()
+			if not name or name == "" then
 				notifications:create_notification({name = "Configs", info = "No config name selected"})
 				return
 			end
 			pcall(function()
-				writefile(library.directory .. "/configs/" .. config_name .. ".cfg", library:get_config())
+				writefile(library.directory .. "/configs/" .. name .. ".cfg", library:get_config())
 				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. config_name})
+				notifications:create_notification({name = "Configs", info = "Saved config to:\n" .. name})
 			end)
 		end
 	})
+
 	section2:button({
 		name = "Load",
 		callback = function()
@@ -1916,18 +1940,19 @@ function library:init_config(window)
 				notifications:create_notification({name = "Configs", info = "File system unsupported"})
 				return
 			end
-			local config_name = flags["config_name_list"]
-			if not config_name or config_name == "" then
+			local name = get_list_name()
+			if not name or name == "" then
 				notifications:create_notification({name = "Configs", info = "No config selected"})
 				return
 			end
 			pcall(function()
-				library:load_config(readfile(library.directory .. "/configs/" .. config_name .. ".cfg"))
+				library:load_config(readfile(library.directory .. "/configs/" .. name .. ".cfg"))
 				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. config_name})
+				notifications:create_notification({name = "Configs", info = "Loaded config:\n" .. name})
 			end)
 		end
 	})
+
 	section2:button({
 		name = "Delete",
 		callback = function()
@@ -1935,15 +1960,15 @@ function library:init_config(window)
 				notifications:create_notification({name = "Configs", info = "File system unsupported"})
 				return
 			end
-			local config_name = flags["config_name_list"]
-			if not config_name or config_name == "" then
+			local name = get_list_name()
+			if not name or name == "" then
 				notifications:create_notification({name = "Configs", info = "No config selected"})
 				return
 			end
 			pcall(function()
-				delfile(library.directory .. "/configs/" .. config_name .. ".cfg")
+				delfile(library.directory .. "/configs/" .. name .. ".cfg")
 				library:update_config_list()
-				notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. config_name})
+				notifications:create_notification({name = "Configs", info = "Deleted config:\n" .. name})
 			end)
 		end
 	})
@@ -1990,8 +2015,8 @@ function notifications:create_notification(options)
 	local items = cfg.items
 	do
 		items["notification"] = library:create("Frame", {
-			Parent = library["layer"], Size = dim2(0, 210, 0, 53), Name = "\0", BorderColor3 = rgb(0, 0, 0), BorderSizePixel = 0,
-			BackgroundTransparency = 1, AnchorPoint = vec2(1, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = rgb(14, 14, 16), ZIndex = 30,
+			Parent = library["items"], Size = dim2(0, 210, 0, 53), Name = "\0", BorderColor3 = rgb(0, 0, 0), BorderSizePixel = 0,
+			BackgroundTransparency = 1, AnchorPoint = vec2(1, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = rgb(14, 14, 16)
 		})
 		library:create("UIStroke", {Color = rgb(23, 23, 29), Parent = items["notification"], Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
 		items["title"] = library:create("TextLabel", {
