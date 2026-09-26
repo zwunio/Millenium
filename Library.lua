@@ -2,7 +2,7 @@
 Milenium Library
 -> Made by @finobe
 -> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
--> fixes: config delete/load, colorpicker outside-tap close + unscaled palette, dropdown width
+-> fixes: config delete/load, colorpicker outside-tap close + unscaled palette + dot snap on open, dropdown width, input text colors
 ]]
 -- Variables
 local uis = game:GetService("UserInputService")
@@ -2840,6 +2840,27 @@ function library:colorpicker(options)
 		end
 	end
 
+	-- recompute dot positions from real (rendered) sizes; snap = no tween
+	function cfg.refresh_dots(snap)
+		local hue_w = items["hue_gradient"].AbsoluteSize.X
+		local sat_w = items["saturation_holder"].AbsoluteSize.X
+		if hue_w == 0 or sat_w == 0 then
+			return
+		end
+		local hue_pos = dim2(0, (hue_w - items["hue_picker"].AbsoluteSize.X) * h, 0.5, 0)
+		local alpha_pos = dim2(0, (items["alpha_gradient"].AbsoluteSize.X - items["alpha_picker"].AbsoluteSize.X) * (1 - a), 0.5, 0)
+		local sat_pos = dim2(0, s * (sat_w - items["satvalpicker"].AbsoluteSize.X), 1, 1 - v * (items["saturation_holder"].AbsoluteSize.Y - items["satvalpicker"].AbsoluteSize.Y))
+		if snap then
+			items["hue_picker"].Position = hue_pos
+			items["alpha_picker"].Position = alpha_pos
+			items["satvalpicker"].Position = sat_pos
+		else
+			library:tween(items["hue_picker"], {Position = hue_pos}, Enum.EasingStyle.Linear, 0.05)
+			library:tween(items["alpha_picker"], {Position = alpha_pos}, Enum.EasingStyle.Linear, 0.05)
+			library:tween(items["satvalpicker"], {Position = sat_pos}, Enum.EasingStyle.Linear, 0.05)
+		end
+	end
+
 	function cfg.set_visible(bool)
 		if library.catcher then
 			library.catcher.Visible = false
@@ -2861,6 +2882,16 @@ function library:colorpicker(options)
 		if bool and library.catcher then
 			library.catcher.Visible = true
 		end
+
+		if bool then
+			cfg.refresh_dots(true)
+			task.spawn(function()
+				task.wait()
+				if cfg.open then
+					cfg.refresh_dots(true)
+				end
+			end)
+		end
 	end
 
 	function cfg.set(color, alpha)
@@ -2878,9 +2909,7 @@ function library:colorpicker(options)
 
 		local Color = hsv(h, s, v)
 
-		library:tween(items["hue_picker"], {Position = dim2(0, (items["hue_gradient"].AbsoluteSize.X - items["hue_picker"].AbsoluteSize.X) * h, 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
-		library:tween(items["alpha_picker"], {Position = dim2(0, (items["alpha_gradient"].AbsoluteSize.X - items["alpha_picker"].AbsoluteSize.X) * (1 - a), 0.5, 0)}, Enum.EasingStyle.Linear, 0.05)
-		library:tween(items["satvalpicker"], {Position = dim2(0, s * (items["saturation_holder"].AbsoluteSize.X - items["satvalpicker"].AbsoluteSize.X), 1, 1 - v * (items["saturation_holder"].AbsoluteSize.Y - items["satvalpicker"].AbsoluteSize.Y))}, Enum.EasingStyle.Linear, 0.05)
+		cfg.refresh_dots(false)
 
 		items["alpha_indicator"]:FindFirstChildOfClass("UIGradient").Color = rgbseq{rgbkey(0, rgb(112, 112, 112)), rgbkey(1, hsv(h, 1, 1))}
 		items["colorpicker"].BackgroundColor3 = Color
@@ -2970,12 +2999,13 @@ function library:colorpicker(options)
 		end
 	end)
 
+	-- white while typing, gray when idle, instant swap (no flicker)
 	items["input"].Focused:Connect(function()
-		library:tween(items["input"], {TextColor3 = rgb(245, 245, 245)})
+		items["input"].TextColor3 = rgb(245, 245, 245)
 	end)
 
 	items["input"].FocusLost:Connect(function()
-		library:tween(items["input"], {TextColor3 = rgb(72, 72, 72)})
+		items["input"].TextColor3 = rgb(72, 72, 72)
 	end)
 
 	cfg.set(cfg.color, cfg.alpha)
@@ -3095,12 +3125,13 @@ function library:textbox(options)
 		cfg.set(items["input"].Text)
 	end)
 
+	-- white while typing, gray when idle, instant swap (no flicker)
 	items["input"].Focused:Connect(function()
-		library:tween(items["input"], {TextColor3 = rgb(245, 245, 245)})
+		items["input"].TextColor3 = rgb(245, 245, 245)
 	end)
 
 	items["input"].FocusLost:Connect(function()
-		library:tween(items["input"], {TextColor3 = rgb(72, 72, 72)})
+		items["input"].TextColor3 = rgb(72, 72, 72)
 	end)
 
 	if cfg.default then
