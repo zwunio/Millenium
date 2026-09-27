@@ -1,10 +1,3 @@
---[[
-Milenium Library
--> Made by @finobe
--> Mobile + PC fork: uniform UIScale (scale down, never resize), lib-styled mobile Menu button
--> fixes: config delete/load, colorpicker palette + dots, dropdown width, input text tweens, outside-press close for all popups
-]]
--- Variables
 local uis = game:GetService("UserInputService")
 local players = game:GetService("Players")
 local ws = game:GetService("Workspace")
